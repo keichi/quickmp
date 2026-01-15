@@ -45,6 +45,10 @@ if(VEDA_FOUND)
   target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(_quickmp PRIVATE ${VEDA_LIBRARY})
 
+  add_executable(bench src/bench.cpp src/ve/backend.cpp)
+  target_include_directories(bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(bench PRIVATE ${VEDA_LIBRARY} ${CMAKE_DL_LIBS})
+
   install(TARGETS quickmp-device DESTINATION quickmp)
   install(TARGETS _quickmp DESTINATION quickmp)
 else()

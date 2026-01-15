@@ -8,7 +8,11 @@ int main()
 
     std::vector<double> T(n), P(n - m + 1);
 
+    quickmp::init();
+
     for (int i = 0; i < 50; i++) {
         quickmp::selfjoin(T.data(), P.data(), n, m);
     }
+
+    quickmp::finalize();
 }
