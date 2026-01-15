@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace quickmp {
 
@@ -28,5 +29,9 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream = 0);
 // stream: VE stream number (ignored for CPU)
 void abjoin(const double *T1, const double *T2, double *P,
             size_t n1, size_t n2, size_t m, int stream = 0);
+
+// Sleep for specified microseconds on VE (for benchmarking)
+// stream: VE stream number (ignored for CPU)
+void sleep_us(uint64_t microseconds, int stream = 0);
 
 } // namespace quickmp

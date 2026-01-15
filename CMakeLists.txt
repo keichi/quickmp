@@ -38,7 +38,8 @@ if(VEDA_FOUND)
   add_library(quickmp-device SHARED
     src/ve/dot_product.vcpp
     src/ve/stats.vcpp
-    src/ve/stomp.vcpp)
+    src/ve/stomp.vcpp
+    src/ve/sleep.vcpp)
   target_include_directories(quickmp-device PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   add_library(quickmp-core src/ve/backend.cpp)

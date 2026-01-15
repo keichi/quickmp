@@ -1,0 +1,12 @@
+// vim: set ft=cpp:
+#include <veda_device.h>
+#include <unistd.h>
+
+extern "C" {
+
+void sleep_kernel(uint64_t microseconds)
+{
+    usleep(microseconds);
+}
+
+}

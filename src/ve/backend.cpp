@@ -35,7 +35,9 @@ std::string get_kernel_lib_path() {
     return path.string();
 }
 
-// Memory pool for VE device memory
+// Memory pool for VE device memory (single global pool with mutex)
+// Note: Per-stream pools were tried but performed worse due to VEDA internal
+// contention when multiple threads call vedaMemAlloc simultaneously.
 class MemoryPool {
 public:
     VEDAdeviceptr alloc(size_t size) {
@@ -81,6 +83,7 @@ VEDAfunction g_selfjoin;
 VEDAfunction g_abjoin;
 VEDAfunction g_compute_mean_std;
 VEDAfunction g_sliding_dot_product;
+VEDAfunction g_sleep;
 MemoryPool g_pool;
 
 } // anonymous namespace
@@ -95,6 +98,7 @@ void initialize(int device) {
     VEDA_CHECK(vedaModuleGetFunction(&g_abjoin, g_mod, "abjoin_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_compute_mean_std, g_mod, "compute_mean_std_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_sliding_dot_product, g_mod, "sliding_dot_product_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_sleep, g_mod, "sleep_kernel"));
 }
 
 void finalize() {
@@ -212,6 +216,18 @@ void abjoin(const double *T1, const double *T2, double *P,
     g_pool.free(T1_ptr);
     g_pool.free(T2_ptr);
     g_pool.free(P_ptr);
+}
+
+void sleep_us(uint64_t microseconds, int stream) {
+    VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
+    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
+
+    VEDAargs args;
+    VEDA_CHECK(vedaArgsCreate(&args));
+    VEDA_CHECK(vedaArgsSetU64(args, 0, microseconds));
+
+    VEDA_CHECK(vedaLaunchKernelEx(g_sleep, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
 } // namespace quickmp

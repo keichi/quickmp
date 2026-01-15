@@ -171,6 +171,26 @@ NB_MODULE(_quickmp, m) {
           Matrix profile
     )doc");
 
+    m.def(
+        "sleep_us",
+        [](uint64_t microseconds, int stream) {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            {
+                nb::gil_scoped_release release;
+                quickmp::sleep_us(microseconds, stream);
+            }
+        },
+        "microseconds"_a, "stream"_a = 0,
+        R"doc(
+        Sleep for specified microseconds on VE (for benchmarking).
+
+        Args:
+          microseconds: Sleep duration in microseconds
+          stream: Stream number (default: 0). Only used for VE backend.
+    )doc");
+
     // Register cleanup function to be called at module unload
     static int dummy = 0;
     m.attr("_cleanup") = nb::capsule(&dummy, [](void *) noexcept {

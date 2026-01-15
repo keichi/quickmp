@@ -1,6 +1,8 @@
 #include "quickmp.hpp"
 #include "cpu/internal.hpp"
 
+#include <unistd.h>
+
 namespace quickmp {
 
 void initialize(int device) {
@@ -33,6 +35,11 @@ void abjoin(const double *T1, const double *T2, double *P,
             size_t n1, size_t n2, size_t m, int stream) {
     (void)stream;
     ::abjoin(T1, T2, P, n1, n2, m);
+}
+
+void sleep_us(uint64_t microseconds, int stream) {
+    (void)stream;
+    usleep(microseconds);
 }
 
 } // namespace quickmp
