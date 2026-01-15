@@ -44,9 +44,9 @@ VEDAfunction g_sliding_dot_product;
 
 namespace quickmp {
 
-void init() {
+void initialize(int device) {
     VEDA_CHECK(vedaInit(0));
-    VEDA_CHECK(vedaCtxCreate(&g_ctx, VEDA_CONTEXT_MODE_SCALAR, 0));
+    VEDA_CHECK(vedaCtxCreate(&g_ctx, VEDA_CONTEXT_MODE_SCALAR, device));
     VEDA_CHECK(vedaModuleLoad(&g_mod, get_kernel_lib_path().c_str()));
     VEDA_CHECK(vedaModuleGetFunction(&g_selfjoin, g_mod, "selfjoin_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_abjoin, g_mod, "abjoin_kernel"));
@@ -58,13 +58,15 @@ void finalize() {
     VEDA_CHECK(vedaExit());
 }
 
-void sliding_dot_product(const double *T, const double *Q, double *QT, size_t n, size_t m) {
-    VEDAstream stream = 0;
+void sliding_dot_product(const double *T, const double *Q, double *QT,
+                         size_t n, size_t m, int stream) {
+    VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
+    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     VEDAdeviceptr T_ptr, Q_ptr, QT_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&Q_ptr, m * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&QT_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&Q_ptr, m * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -74,25 +76,27 @@ void sliding_dot_product(const double *T, const double *Q, double *QT, size_t n,
     VEDA_CHECK(vedaArgsSetU64(args, 3, n));
     VEDA_CHECK(vedaArgsSetU64(args, 4, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), stream));
-    VEDA_CHECK(vedaMemcpyHtoDAsync(Q_ptr, Q, m * sizeof(double), stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_sliding_dot_product, stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(Q_ptr, Q, m * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_sliding_dot_product, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(Q_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(QT_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(Q_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(QT_ptr, veda_stream));
 
-    VEDA_CHECK(vedaStreamSynchronize(stream));
+    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
-void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size_t m) {
-    VEDAstream stream = 0;
+void compute_mean_std(const double *T, double *mu, double *sigma,
+                      size_t n, size_t m, int stream) {
+    VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
+    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     VEDAdeviceptr T_ptr, mu_ptr, sigma_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&mu_ptr, (n - m + 1) * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&sigma_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&mu_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -102,24 +106,25 @@ void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size
     VEDA_CHECK(vedaArgsSetU64(args, 3, n));
     VEDA_CHECK(vedaArgsSetU64(args, 4, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_compute_mean_std, stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), stream));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_compute_mean_std, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(mu_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(sigma_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(mu_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(sigma_ptr, veda_stream));
 
-    VEDA_CHECK(vedaStreamSynchronize(stream));
+    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
-void selfjoin(const double *T, double *P, size_t n, size_t m) {
-    VEDAstream stream = 0;
+void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
+    VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
+    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     VEDAdeviceptr T_ptr, P_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -128,23 +133,25 @@ void selfjoin(const double *T, double *P, size_t n, size_t m) {
     VEDA_CHECK(vedaArgsSetU64(args, 2, n));
     VEDA_CHECK(vedaArgsSetU64(args, 3, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_selfjoin, stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_selfjoin, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(P_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(P_ptr, veda_stream));
 
-    VEDA_CHECK(vedaStreamSynchronize(stream));
+    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
-void abjoin(const double *T1, const double *T2, double *P, size_t n1, size_t n2, size_t m) {
-    VEDAstream stream = 0;
+void abjoin(const double *T1, const double *T2, double *P,
+            size_t n1, size_t n2, size_t m, int stream) {
+    VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
+    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     VEDAdeviceptr T1_ptr, T2_ptr, P_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T1_ptr, n1 * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&T2_ptr, n2 * sizeof(double), stream));
-    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n1 - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&T1_ptr, n1 * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&T2_ptr, n2 * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -155,16 +162,16 @@ void abjoin(const double *T1, const double *T2, double *P, size_t n1, size_t n2,
     VEDA_CHECK(vedaArgsSetU64(args, 4, n2));
     VEDA_CHECK(vedaArgsSetU64(args, 5, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T1_ptr, T1, n1 * sizeof(double), stream));
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T2_ptr, T2, n2 * sizeof(double), stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_abjoin, stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T1_ptr, T1, n1 * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T2_ptr, T2, n2 * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_abjoin, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T1_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(T2_ptr, stream));
-    VEDA_CHECK(vedaMemFreeAsync(P_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(T1_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(T2_ptr, veda_stream));
+    VEDA_CHECK(vedaMemFreeAsync(P_ptr, veda_stream));
 
-    VEDA_CHECK(vedaStreamSynchronize(stream));
+    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
 } // namespace quickmp
