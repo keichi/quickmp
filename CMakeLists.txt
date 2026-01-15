@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15...4.1)
+cmake_minimum_required(VERSION 3.18...4.1)
 project(quickmp LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -23,13 +23,7 @@ list(APPEND CMAKE_PREFIX_PATH /opt/nec/ve3/lib)
 find_package(VEDA QUIET)
 
 # Python/nanobind configuration
-if (CMAKE_VERSION VERSION_LESS 3.18)
-  set(DEV_MODULE Development)
-else()
-  set(DEV_MODULE Development.Module)
-endif()
-
-find_package(Python 3.8 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
 
 execute_process(
   COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
