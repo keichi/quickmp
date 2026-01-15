@@ -41,16 +41,12 @@ if(VEDA_FOUND)
     src/ve/stomp.vcpp)
   target_include_directories(quickmp-device PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-  nanobind_add_module(_quickmp src/bindings.cpp src/ve/backend.cpp)
-  target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(_quickmp PRIVATE ${VEDA_LIBRARY})
-
-  add_executable(bench src/bench.cpp src/ve/backend.cpp)
-  target_include_directories(bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(bench PRIVATE ${VEDA_LIBRARY} ${CMAKE_DL_LIBS})
+  add_library(quickmp-core src/ve/backend.cpp)
+  target_include_directories(quickmp-core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(quickmp-core PUBLIC ${VEDA_LIBRARY} ${CMAKE_DL_LIBS})
+  set_target_properties(quickmp-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
   install(TARGETS quickmp-device DESTINATION quickmp)
-  install(TARGETS _quickmp DESTINATION quickmp)
 else()
   message(STATUS "VEDA not found - Building for CPU")
 
@@ -65,14 +61,15 @@ else()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
     set_source_files_properties(src/cpu/stomp.cpp PROPERTIES COMPILE_FLAGS "-qopt-zmm-usage=high")
   endif()
-
-  add_executable(bench src/bench.cpp)
-  target_include_directories(bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(bench PRIVATE quickmp-core)
-
-  nanobind_add_module(_quickmp src/bindings.cpp)
-  target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(_quickmp PRIVATE quickmp-core)
-
-  install(TARGETS _quickmp DESTINATION quickmp)
 endif()
+
+# Common targets
+add_executable(bench src/bench.cpp)
+target_include_directories(bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(bench PRIVATE quickmp-core)
+
+nanobind_add_module(_quickmp src/bindings.cpp)
+target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(_quickmp PRIVATE quickmp-core)
+
+install(TARGETS _quickmp DESTINATION quickmp)
