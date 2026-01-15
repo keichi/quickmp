@@ -42,12 +42,13 @@ if(VEDA_FOUND)
   include_directories(${VEDA_INCLUDE_DIRS})
 
   add_library(quickmp-device SHARED
-    src/kernel/dot_product.vcpp
-    src/kernel/stats.vcpp
-    src/kernel/stomp.vcpp)
+    src/ve/dot_product.vcpp
+    src/ve/stats.vcpp
+    src/ve/stomp.vcpp)
   target_include_directories(quickmp-device PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-  nanobind_add_module(_quickmp src/bindings_ve.cpp)
+  nanobind_add_module(_quickmp src/bindings.cpp src/ve/backend.cpp)
+  target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   target_link_libraries(_quickmp PRIVATE ${VEDA_LIBRARY})
 
   install(TARGETS quickmp-device DESTINATION quickmp)
@@ -55,15 +56,13 @@ if(VEDA_FOUND)
 else()
   message(STATUS "VEDA not found - Building for CPU")
 
-  if(DEFINED ENV{RELEASE_FLAGS})
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} $ENV{RELEASE_FLAGS}")
-  else()
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -ffast-math")
-  endif()
-
-  add_library(quickmp src/cpu/dot_product.cpp src/cpu/stats.cpp src/cpu/stomp.cpp)
-  target_include_directories(quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  set_target_properties(quickmp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  add_library(quickmp-core
+    src/cpu/dot_product.cpp
+    src/cpu/stats.cpp
+    src/cpu/stomp.cpp
+    src/cpu/backend.cpp)
+  target_include_directories(quickmp-core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  set_target_properties(quickmp-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
     set_source_files_properties(src/cpu/stomp.cpp PROPERTIES COMPILE_FLAGS "-qopt-zmm-usage=high")
@@ -71,11 +70,11 @@ else()
 
   add_executable(bench src/bench.cpp)
   target_include_directories(bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(bench PRIVATE quickmp)
+  target_link_libraries(bench PRIVATE quickmp-core)
 
-  nanobind_add_module(_quickmp src/bindings_cpu.cpp)
+  nanobind_add_module(_quickmp src/bindings.cpp)
   target_include_directories(_quickmp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_link_libraries(_quickmp PRIVATE quickmp)
+  target_link_libraries(_quickmp PRIVATE quickmp-core)
 
   install(TARGETS _quickmp DESTINATION quickmp)
 endif()

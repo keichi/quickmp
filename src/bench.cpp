@@ -9,6 +9,6 @@ int main()
     std::vector<double> T(n), P(n - m + 1);
 
     for (int i = 0; i < 50; i++) {
-        selfjoin(T.data(), P.data(), n, m);
+        quickmp::selfjoin(T.data(), P.data(), n, m);
     }
 }

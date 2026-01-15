@@ -6,7 +6,7 @@
 
 #include <veda_device.h>
 
-#include "quickmp_ve.hpp"
+#include "ve/internal.hpp"
 
 extern "C" {
 
