@@ -3,6 +3,20 @@ project(quickmp LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
+if(DEFINED ENV{RELEASE_FLAGS})
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} $ENV{RELEASE_FLAGS}")
+else()
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -ffast-math")
+endif()
+
+# if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -qopt-report=max -qopt-report-phase=vec")
+# elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Rpass=loop-vectorize -Rpass-analysis=loop-vectorize")
+# elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopt-info-vec-optimized-missed")
+# endif()
+
 # Detect VEDA
 list(APPEND CMAKE_MODULE_PATH /opt/nec/ve/share/veoffload-veda/cmake)
 list(APPEND CMAKE_PREFIX_PATH /opt/nec/ve3/lib)
