@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 
@@ -33,12 +35,53 @@ std::string get_kernel_lib_path() {
     return path.string();
 }
 
+// Memory pool for VE device memory
+class MemoryPool {
+public:
+    VEDAdeviceptr alloc(size_t size) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto &free_list = free_blocks_[size];
+        if (!free_list.empty()) {
+            VEDAdeviceptr ptr = free_list.back();
+            free_list.pop_back();
+            return ptr;
+        }
+        VEDAdeviceptr ptr;
+        VEDA_CHECK(vedaMemAlloc(&ptr, size));
+        allocated_sizes_[ptr] = size;
+        return ptr;
+    }
+
+    void free(VEDAdeviceptr ptr) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t size = allocated_sizes_[ptr];
+        free_blocks_[size].push_back(ptr);
+    }
+
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto &[size, ptrs] : free_blocks_) {
+            for (auto ptr : ptrs) {
+                vedaMemFree(ptr);
+            }
+        }
+        free_blocks_.clear();
+        allocated_sizes_.clear();
+    }
+
+private:
+    std::mutex mutex_;
+    std::map<size_t, std::vector<VEDAdeviceptr>> free_blocks_;
+    std::map<VEDAdeviceptr, size_t> allocated_sizes_;
+};
+
 VEDAcontext g_ctx;
 VEDAmodule g_mod;
 VEDAfunction g_selfjoin;
 VEDAfunction g_abjoin;
 VEDAfunction g_compute_mean_std;
 VEDAfunction g_sliding_dot_product;
+MemoryPool g_pool;
 
 } // anonymous namespace
 
@@ -55,6 +98,7 @@ void initialize(int device) {
 }
 
 void finalize() {
+    g_pool.clear();
     VEDA_CHECK(vedaExit());
 }
 
@@ -63,10 +107,9 @@ void sliding_dot_product(const double *T, const double *Q, double *QT,
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr, Q_ptr, QT_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&Q_ptr, m * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDAdeviceptr T_ptr = g_pool.alloc(n * sizeof(double));
+    VEDAdeviceptr Q_ptr = g_pool.alloc(m * sizeof(double));
+    VEDAdeviceptr QT_ptr = g_pool.alloc((n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -81,11 +124,11 @@ void sliding_dot_product(const double *T, const double *Q, double *QT,
     VEDA_CHECK(vedaLaunchKernelEx(g_sliding_dot_product, veda_stream, args, 1, nullptr));
     VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(Q_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(QT_ptr, veda_stream));
-
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+
+    g_pool.free(T_ptr);
+    g_pool.free(Q_ptr);
+    g_pool.free(QT_ptr);
 }
 
 void compute_mean_std(const double *T, double *mu, double *sigma,
@@ -93,10 +136,9 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr, mu_ptr, sigma_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&mu_ptr, (n - m + 1) * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDAdeviceptr T_ptr = g_pool.alloc(n * sizeof(double));
+    VEDAdeviceptr mu_ptr = g_pool.alloc((n - m + 1) * sizeof(double));
+    VEDAdeviceptr sigma_ptr = g_pool.alloc((n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -111,20 +153,19 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), veda_stream));
     VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(mu_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(sigma_ptr, veda_stream));
-
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+
+    g_pool.free(T_ptr);
+    g_pool.free(mu_ptr);
+    g_pool.free(sigma_ptr);
 }
 
 void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr, P_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDAdeviceptr T_ptr = g_pool.alloc(n * sizeof(double));
+    VEDAdeviceptr P_ptr = g_pool.alloc((n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -137,10 +178,10 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
     VEDA_CHECK(vedaLaunchKernelEx(g_selfjoin, veda_stream, args, 1, nullptr));
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(P_ptr, veda_stream));
-
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+
+    g_pool.free(T_ptr);
+    g_pool.free(P_ptr);
 }
 
 void abjoin(const double *T1, const double *T2, double *P,
@@ -148,10 +189,9 @@ void abjoin(const double *T1, const double *T2, double *P,
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T1_ptr, T2_ptr, P_ptr;
-    VEDA_CHECK(vedaMemAllocAsync(&T1_ptr, n1 * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&T2_ptr, n2 * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemAllocAsync(&P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
+    VEDAdeviceptr T1_ptr = g_pool.alloc(n1 * sizeof(double));
+    VEDAdeviceptr T2_ptr = g_pool.alloc(n2 * sizeof(double));
+    VEDAdeviceptr P_ptr = g_pool.alloc((n1 - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -167,11 +207,11 @@ void abjoin(const double *T1, const double *T2, double *P,
     VEDA_CHECK(vedaLaunchKernelEx(g_abjoin, veda_stream, args, 1, nullptr));
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
 
-    VEDA_CHECK(vedaMemFreeAsync(T1_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(T2_ptr, veda_stream));
-    VEDA_CHECK(vedaMemFreeAsync(P_ptr, veda_stream));
-
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+
+    g_pool.free(T1_ptr);
+    g_pool.free(T2_ptr);
+    g_pool.free(P_ptr);
 }
 
 } // namespace quickmp

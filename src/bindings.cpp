@@ -60,7 +60,10 @@ NB_MODULE(_quickmp, m) {
 
             std::vector<double> QT(n - m + 1);
 
-            quickmp::sliding_dot_product(T.data(), Q.data(), QT.data(), n, m, stream);
+            {
+                nb::gil_scoped_release release;
+                quickmp::sliding_dot_product(T.data(), Q.data(), QT.data(), n, m, stream);
+            }
 
             return pyarr_t(QT.data(), {QT.size()}).cast();
         },
@@ -87,7 +90,10 @@ NB_MODULE(_quickmp, m) {
             std::vector<double> mu(n - m + 1);
             std::vector<double> sigma(n - m + 1);
 
-            quickmp::compute_mean_std(T.data(), mu.data(), sigma.data(), n, m, stream);
+            {
+                nb::gil_scoped_release release;
+                quickmp::compute_mean_std(T.data(), mu.data(), sigma.data(), n, m, stream);
+            }
 
             return std::make_pair(pyarr_t(mu.data(), {mu.size()}).cast(),
                                   pyarr_t(sigma.data(), {sigma.size()}).cast());
@@ -114,7 +120,10 @@ NB_MODULE(_quickmp, m) {
             size_t n = T.shape(0);
             std::vector<double> P(n - m + 1);
 
-            quickmp::selfjoin(T.data(), P.data(), n, m, stream);
+            {
+                nb::gil_scoped_release release;
+                quickmp::selfjoin(T.data(), P.data(), n, m, stream);
+            }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
@@ -141,7 +150,10 @@ NB_MODULE(_quickmp, m) {
             size_t n2 = T2.shape(0);
             std::vector<double> P(n1 - m + 1);
 
-            quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, stream);
+            {
+                nb::gil_scoped_release release;
+                quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, stream);
+            }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
