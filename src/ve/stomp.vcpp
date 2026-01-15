@@ -10,14 +10,9 @@
 
 extern "C" {
 
-void selfjoin(VEDAdeviceptr T_ptr, VEDAdeviceptr P_ptr, size_t n, size_t m)
+void selfjoin(const double *__restrict T, double *__restrict P, size_t n, size_t m)
 {
     size_t excl_zone = std::ceil(m / 4.0);
-
-    const double *__restrict T = nullptr;
-    double *__restrict P = nullptr;
-    vedaMemPtr((void **)&T, T_ptr);
-    vedaMemPtr((void **)&P, P_ptr);
 
     double *__restrict QT = new double[n - m + 1];
     double *__restrict QT2 = new double[n - m + 1];
@@ -77,17 +72,22 @@ void selfjoin(VEDAdeviceptr T_ptr, VEDAdeviceptr P_ptr, size_t n, size_t m)
     delete[] sigma_inv;
 }
 
-// For each subsequence in T1, returns its nearest neighbor in T2
-void abjoin(VEDAdeviceptr T1_ptr, VEDAdeviceptr T2_ptr, VEDAdeviceptr P_ptr, size_t n1, size_t n2,
-            size_t m)
+void selfjoin_kernel(VEDAdeviceptr T_ptr, VEDAdeviceptr P_ptr, size_t n, size_t m)
 {
-    const double *__restrict T1 = nullptr;
-    const double *__restrict T2 = nullptr;
-    double *__restrict P = nullptr;
+    const double *T = nullptr;
+    double *P = nullptr;
 
-    vedaMemPtr((void **)&T1, T1_ptr);
-    vedaMemPtr((void **)&T2, T2_ptr);
+    vedaMemPtr((void **)&T, T_ptr);
     vedaMemPtr((void **)&P, P_ptr);
+
+#pragma _NEC inline
+    selfjoin(T, P, n, m);
+}
+
+// For each subsequence in T1, returns its nearest neighbor in T2
+void abjoin(const double *__restrict T1, const double *__restrict T2, double *__restrict P,
+            size_t n1, size_t n2, size_t m)
+{
 
     double *__restrict QT = new double[n1 - m + 1];
     double *__restrict QT2 = new double[n1 - m + 1];
@@ -143,6 +143,21 @@ void abjoin(VEDAdeviceptr T1_ptr, VEDAdeviceptr T2_ptr, VEDAdeviceptr P_ptr, siz
     delete[] mu2;
     delete[] sigma_inv1;
     delete[] sigma_inv2;
+}
+
+void abjoin_kernel(VEDAdeviceptr T1_ptr, VEDAdeviceptr T2_ptr, VEDAdeviceptr P_ptr, size_t n1,
+                   size_t n2, size_t m)
+{
+    const double *T1 = nullptr;
+    const double *T2 = nullptr;
+    double *P = nullptr;
+
+    vedaMemPtr((void **)&T1, T1_ptr);
+    vedaMemPtr((void **)&T2, T2_ptr);
+    vedaMemPtr((void **)&P, P_ptr);
+
+#pragma _NEC inline
+    abjoin(T1, T2, P, n1, n2, m);
 }
 
 }

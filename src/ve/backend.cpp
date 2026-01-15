@@ -37,6 +37,8 @@ VEDAcontext g_ctx;
 VEDAmodule g_mod;
 VEDAfunction g_selfjoin;
 VEDAfunction g_abjoin;
+VEDAfunction g_compute_mean_std;
+VEDAfunction g_sliding_dot_product;
 
 } // anonymous namespace
 
@@ -46,8 +48,10 @@ void init() {
     VEDA_CHECK(vedaInit(0));
     VEDA_CHECK(vedaCtxCreate(&g_ctx, VEDA_CONTEXT_MODE_SCALAR, 0));
     VEDA_CHECK(vedaModuleLoad(&g_mod, get_kernel_lib_path().c_str()));
-    VEDA_CHECK(vedaModuleGetFunction(&g_selfjoin, g_mod, "selfjoin"));
-    VEDA_CHECK(vedaModuleGetFunction(&g_abjoin, g_mod, "abjoin"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_selfjoin, g_mod, "selfjoin_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_abjoin, g_mod, "abjoin_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_compute_mean_std, g_mod, "compute_mean_std_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_sliding_dot_product, g_mod, "sliding_dot_product_kernel"));
 }
 
 void finalize() {
@@ -55,11 +59,59 @@ void finalize() {
 }
 
 void sliding_dot_product(const double *T, const double *Q, double *QT, size_t n, size_t m) {
-    throw std::runtime_error("sliding_dot_product is not implemented for VE backend");
+    VEDAstream stream = 0;
+
+    VEDAdeviceptr T_ptr, Q_ptr, QT_ptr;
+    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&Q_ptr, m * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&QT_ptr, (n - m + 1) * sizeof(double), stream));
+
+    VEDAargs args;
+    VEDA_CHECK(vedaArgsCreate(&args));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 0, T_ptr));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 1, Q_ptr));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 2, QT_ptr));
+    VEDA_CHECK(vedaArgsSetU64(args, 3, n));
+    VEDA_CHECK(vedaArgsSetU64(args, 4, m));
+
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(Q_ptr, Q, m * sizeof(double), stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_sliding_dot_product, stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), stream));
+
+    VEDA_CHECK(vedaMemFreeAsync(T_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(Q_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(QT_ptr, stream));
+
+    VEDA_CHECK(vedaStreamSynchronize(stream));
 }
 
 void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size_t m) {
-    throw std::runtime_error("compute_mean_std is not implemented for VE backend");
+    VEDAstream stream = 0;
+
+    VEDAdeviceptr T_ptr, mu_ptr, sigma_ptr;
+    VEDA_CHECK(vedaMemAllocAsync(&T_ptr, n * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&mu_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemAllocAsync(&sigma_ptr, (n - m + 1) * sizeof(double), stream));
+
+    VEDAargs args;
+    VEDA_CHECK(vedaArgsCreate(&args));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 0, T_ptr));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 1, mu_ptr));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 2, sigma_ptr));
+    VEDA_CHECK(vedaArgsSetU64(args, 3, n));
+    VEDA_CHECK(vedaArgsSetU64(args, 4, m));
+
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), stream));
+    VEDA_CHECK(vedaLaunchKernelEx(g_compute_mean_std, stream, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), stream));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), stream));
+
+    VEDA_CHECK(vedaMemFreeAsync(T_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(mu_ptr, stream));
+    VEDA_CHECK(vedaMemFreeAsync(sigma_ptr, stream));
+
+    VEDA_CHECK(vedaStreamSynchronize(stream));
 }
 
 void selfjoin(const double *T, double *P, size_t n, size_t m) {

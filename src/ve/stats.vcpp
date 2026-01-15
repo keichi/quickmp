@@ -1,5 +1,6 @@
 // vim: set ft=cpp:
 #include <cmath>
+#include <veda_device.h>
 
 extern "C" {
 
@@ -22,6 +23,21 @@ void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size
             sum_T2_lag += T[i + 1 - m] * T[i + 1 - m];
         }
     }
+}
+
+void compute_mean_std_kernel(VEDAdeviceptr T_ptr, VEDAdeviceptr mu_ptr, VEDAdeviceptr sigma_ptr,
+                             size_t n, size_t m)
+{
+    const double *T = nullptr;
+    double *mu = nullptr;
+    double *sigma = nullptr;
+
+    vedaMemPtr((void **)&T, T_ptr);
+    vedaMemPtr((void **)&mu, mu_ptr);
+    vedaMemPtr((void **)&sigma, sigma_ptr);
+
+#pragma _NEC inline
+    compute_mean_std(T, mu, sigma, n, m);
 }
 
 }

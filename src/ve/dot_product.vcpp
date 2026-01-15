@@ -2,6 +2,8 @@
 #include <complex>
 #include <vector>
 
+#include <veda_device.h>
+
 #define POCKETFFT_NO_MULTITHREADING
 #include "pocketfft.hpp"
 
@@ -51,6 +53,21 @@ void sliding_window_dot_product_naive(const double *T, const double *Q, double *
             QT[i] += Q[j] * T[i + j];
         }
     }
+}
+
+void sliding_dot_product_kernel(VEDAdeviceptr T_ptr, VEDAdeviceptr Q_ptr, VEDAdeviceptr QT_ptr,
+                                size_t n, size_t m)
+{
+    const double *T = nullptr;
+    const double *Q = nullptr;
+    double *QT = nullptr;
+
+    vedaMemPtr((void **)&T, T_ptr);
+    vedaMemPtr((void **)&Q, Q_ptr);
+    vedaMemPtr((void **)&QT, QT_ptr);
+
+#pragma _NEC inline
+    sliding_window_dot_product_fft(T, Q, QT, n, m);
 }
 
 }
