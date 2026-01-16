@@ -1,6 +1,6 @@
 [project]
 name = "quickmp"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
     { name="Keichi Takahashi", email="hello@keichi.dev" }
 ]
@@ -28,8 +28,15 @@ test = [
 ]
 
 [build-system]
-requires = ["scikit-build-core", "nanobind"]
+requires = ["scikit-build-core", "nanobind", "setuptools-scm"]
 build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+sdist.include = ["python/quickmp/_version.py"]
+
+[tool.setuptools_scm]
+write_to = "python/quickmp/_version.py"
 
 [tool.cibuildwheel]
 build = ["cp*-macosx_arm64", "cp*-manylinux_x86_64"]

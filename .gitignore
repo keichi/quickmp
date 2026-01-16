@@ -175,3 +175,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# setuptools-scm generated version file
+python/quickmp/_version.py
