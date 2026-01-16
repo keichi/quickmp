@@ -113,7 +113,7 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "selfjoin",
-        [](const_pyarr_t T, size_t m, int stream) {
+        [](const_pyarr_t T, size_t m, int stream, bool normalize) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -122,12 +122,12 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::selfjoin(T.data(), P.data(), n, m, stream);
+                quickmp::selfjoin(T.data(), P.data(), n, m, stream, normalize);
             }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
-        "T"_a, "m"_a, "stream"_a = 0,
+        "T"_a, "m"_a, "stream"_a = 0, "normalize"_a = true,
         R"doc(
         Compute the matrix profile for time series T.
 
@@ -135,6 +135,8 @@ NB_MODULE(_quickmp, m) {
           T: Time series
           m: Window size
           stream: Stream number (default: 0). Only used for VE backend.
+          normalize: If True, use Z-normalized Euclidean distance (default).
+                     If False, use raw Euclidean distance.
 
         Returns:
           Matrix profile
@@ -142,7 +144,7 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "abjoin",
-        [](const_pyarr_t T1, const_pyarr_t T2, size_t m, int stream) {
+        [](const_pyarr_t T1, const_pyarr_t T2, size_t m, int stream, bool normalize) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -152,12 +154,12 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, stream);
+                quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, stream, normalize);
             }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
-        "T1"_a, "T2"_a, "m"_a, "stream"_a = 0,
+        "T1"_a, "T2"_a, "m"_a, "stream"_a = 0, "normalize"_a = true,
         R"doc(
         Compute the matrix profile between time series T1 and T2.
 
@@ -166,6 +168,8 @@ NB_MODULE(_quickmp, m) {
           T2: Time series
           m: Window size
           stream: Stream number (default: 0). Only used for VE backend.
+          normalize: If True, use Z-normalized Euclidean distance (default).
+                     If False, use raw Euclidean distance.
 
         Returns:
           Matrix profile

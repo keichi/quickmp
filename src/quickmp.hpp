@@ -23,12 +23,15 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
 
 // Self-join: compute matrix profile for a single time series
 // stream: VE stream number (ignored for CPU)
-void selfjoin(const double *T, double *P, size_t n, size_t m, int stream = 0);
+// normalize: if true, use Z-normalized Euclidean distance; otherwise use raw Euclidean distance
+void selfjoin(const double *T, double *P, size_t n, size_t m, int stream = 0,
+              bool normalize = true);
 
 // AB-join: compute matrix profile between two time series
 // stream: VE stream number (ignored for CPU)
+// normalize: if true, use Z-normalized Euclidean distance; otherwise use raw Euclidean distance
 void abjoin(const double *T1, const double *T2, double *P,
-            size_t n1, size_t n2, size_t m, int stream = 0);
+            size_t n1, size_t n2, size_t m, int stream = 0, bool normalize = true);
 
 // Sleep for specified microseconds on VE (for benchmarking)
 // stream: VE stream number (ignored for CPU)

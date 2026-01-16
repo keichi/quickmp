@@ -26,15 +26,23 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     ::compute_mean_std(T, mu, sigma, n, m);
 }
 
-void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
+void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool normalize) {
     (void)stream;
-    ::selfjoin(T, P, n, m);
+    if (normalize) {
+        ::selfjoin(T, P, n, m);
+    } else {
+        ::selfjoin_ed(T, P, n, m);
+    }
 }
 
 void abjoin(const double *T1, const double *T2, double *P,
-            size_t n1, size_t n2, size_t m, int stream) {
+            size_t n1, size_t n2, size_t m, int stream, bool normalize) {
     (void)stream;
-    ::abjoin(T1, T2, P, n1, n2, m);
+    if (normalize) {
+        ::abjoin(T1, T2, P, n1, n2, m);
+    } else {
+        ::abjoin_ed(T1, T2, P, n1, n2, m);
+    }
 }
 
 void sleep_us(uint64_t microseconds, int stream) {

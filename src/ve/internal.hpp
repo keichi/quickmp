@@ -14,6 +14,10 @@ void compute_squared_sum(const double *T, double *sum, size_t n, size_t m);
 void selfjoin(const double *T, double *P, size_t n, size_t m);
 void abjoin(const double *T1, const double *T2, double *P, size_t n1, size_t n2, size_t m);
 
+// Non-normalized Euclidean distance versions
+void selfjoin_ed(const double *T, double *P, size_t n, size_t m);
+void abjoin_ed(const double *T1, const double *T2, double *P, size_t n1, size_t n2, size_t m);
+
 void compute_mean_std_kernel(VEDAdeviceptr T, VEDAdeviceptr mu, VEDAdeviceptr sigma, size_t n,
                              size_t m);
 void sliding_dot_product_kernel(VEDAdeviceptr T, VEDAdeviceptr Q, VEDAdeviceptr QT, size_t n,
@@ -21,5 +25,8 @@ void sliding_dot_product_kernel(VEDAdeviceptr T, VEDAdeviceptr Q, VEDAdeviceptr 
 void selfjoin_kernel(VEDAdeviceptr T, VEDAdeviceptr P, size_t n, size_t m);
 void abjoin_kernel(VEDAdeviceptr T1, VEDAdeviceptr T2, VEDAdeviceptr P, size_t n1, size_t n2,
                    size_t m);
+void selfjoin_ed_kernel(VEDAdeviceptr T, VEDAdeviceptr P, size_t n, size_t m);
+void abjoin_ed_kernel(VEDAdeviceptr T1, VEDAdeviceptr T2, VEDAdeviceptr P, size_t n1, size_t n2,
+                      size_t m);
 
 }

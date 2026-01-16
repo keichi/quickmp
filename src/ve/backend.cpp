@@ -81,6 +81,8 @@ VEDAcontext g_ctx;
 VEDAmodule g_mod;
 VEDAfunction g_selfjoin;
 VEDAfunction g_abjoin;
+VEDAfunction g_selfjoin_ed;
+VEDAfunction g_abjoin_ed;
 VEDAfunction g_compute_mean_std;
 VEDAfunction g_sliding_dot_product;
 VEDAfunction g_sleep;
@@ -96,6 +98,8 @@ void initialize(int device) {
     VEDA_CHECK(vedaModuleLoad(&g_mod, get_kernel_lib_path().c_str()));
     VEDA_CHECK(vedaModuleGetFunction(&g_selfjoin, g_mod, "selfjoin_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_abjoin, g_mod, "abjoin_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_selfjoin_ed, g_mod, "selfjoin_ed_kernel"));
+    VEDA_CHECK(vedaModuleGetFunction(&g_abjoin_ed, g_mod, "abjoin_ed_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_compute_mean_std, g_mod, "compute_mean_std_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_sliding_dot_product, g_mod, "sliding_dot_product_kernel"));
     VEDA_CHECK(vedaModuleGetFunction(&g_sleep, g_mod, "sleep_kernel"));
@@ -164,7 +168,7 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     g_pool.free(sigma_ptr);
 }
 
-void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
+void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool normalize) {
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
@@ -178,8 +182,10 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
     VEDA_CHECK(vedaArgsSetU64(args, 2, n));
     VEDA_CHECK(vedaArgsSetU64(args, 3, m));
 
+    VEDAfunction kernel = normalize ? g_selfjoin : g_selfjoin_ed;
+
     VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_selfjoin, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaLaunchKernelEx(kernel, veda_stream, args, 1, nullptr));
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
@@ -189,7 +195,7 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream) {
 }
 
 void abjoin(const double *T1, const double *T2, double *P,
-            size_t n1, size_t n2, size_t m, int stream) {
+            size_t n1, size_t n2, size_t m, int stream, bool normalize) {
     VEDA_CHECK(vedaCtxSetCurrent(g_ctx));
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
@@ -206,9 +212,11 @@ void abjoin(const double *T1, const double *T2, double *P,
     VEDA_CHECK(vedaArgsSetU64(args, 4, n2));
     VEDA_CHECK(vedaArgsSetU64(args, 5, m));
 
+    VEDAfunction kernel = normalize ? g_abjoin : g_abjoin_ed;
+
     VEDA_CHECK(vedaMemcpyHtoDAsync(T1_ptr, T1, n1 * sizeof(double), veda_stream));
     VEDA_CHECK(vedaMemcpyHtoDAsync(T2_ptr, T2, n2 * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(g_abjoin, veda_stream, args, 1, nullptr));
+    VEDA_CHECK(vedaLaunchKernelEx(kernel, veda_stream, args, 1, nullptr));
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));

@@ -61,6 +61,27 @@ def test_abjoin(n, m):
     assert np.allclose(mp, mp2)
 
 
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+def test_selfjoin_unnormalized(n, m):
+    T = np.random.rand(n)
+
+    mp = quickmp.selfjoin(T, m, normalize=False)
+    mp2 = stumpy.stump(T, m, normalize=False)[:, 0].astype(np.float64)
+
+    assert np.allclose(mp, mp2)
+
+
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+def test_abjoin_unnormalized(n, m):
+    T1 = np.random.rand(n)
+    T2 = np.random.rand(n)
+
+    mp = quickmp.abjoin(T1, T2, m, normalize=False)
+
+    mp2 = stumpy.stump(T_A=T1, T_B=T2, m=m, ignore_trivial=False, normalize=False)[:, 0].astype(np.float64)
+    assert np.allclose(mp, mp2)
+
+
 def test_init_finalize():
     """Test explicit init/finalize."""
     # Already initialized by fixture, finalize first
