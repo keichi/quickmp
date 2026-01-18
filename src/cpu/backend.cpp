@@ -2,6 +2,7 @@
 #include "cpu/internal.hpp"
 
 #include <stdexcept>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -41,6 +42,11 @@ void use_device(int device) {
 int get_current_device() {
     // CPU backend always uses device 0
     return 0;
+}
+
+int get_stream_count() {
+    unsigned int cores = std::thread::hardware_concurrency();
+    return cores > 0 ? static_cast<int>(cores) : 1;
 }
 
 void sliding_dot_product(const double *T, const double *Q, double *QT,

@@ -301,4 +301,11 @@ void sleep_us(uint64_t microseconds, int stream) {
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
 }
 
+int get_stream_count() {
+    DeviceContext& dev = current_device();
+    int streamCnt = 0;
+    VEDAresult err = vedaCtxStreamCnt(&streamCnt);
+    return (err == VEDA_SUCCESS) ? streamCnt : 0;
+}
+
 } // namespace quickmp

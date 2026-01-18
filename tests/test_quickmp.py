@@ -148,6 +148,35 @@ def test_computation_on_device():
     assert np.allclose(mp, mp2)
 
 
+def test_get_stream_count():
+    """Test get_stream_count returns positive integer when initialized."""
+    count = quickmp.get_stream_count()
+    assert isinstance(count, int)
+    assert count >= 1
+
+
+def test_get_device_count_not_initialized():
+    """Test get_device_count raises when not initialized."""
+    quickmp.finalize()
+
+    with pytest.raises(RuntimeError):
+        quickmp.get_device_count()
+
+    # Re-init for fixture cleanup
+    quickmp.initialize()
+
+
+def test_get_stream_count_not_initialized():
+    """Test get_stream_count raises when not initialized."""
+    quickmp.finalize()
+
+    with pytest.raises(RuntimeError):
+        quickmp.get_stream_count()
+
+    # Re-init for fixture cleanup
+    quickmp.initialize()
+
+
 def test_multithread_selfjoin():
     num_threads = 4
     n, m = 500, 20

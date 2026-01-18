@@ -239,6 +239,22 @@ NB_MODULE(_quickmp, m) {
           stream: Stream number (default: 0). Only used for VE backend.
     )doc");
 
+    m.def(
+        "get_stream_count",
+        []() {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            return quickmp::get_stream_count();
+        },
+        R"doc(
+        Get the number of available streams for parallel execution.
+
+        Returns:
+          int: Number of available streams (CPU cores for CPU backend,
+               VE streams for VE backend)
+    )doc");
+
     // Register cleanup function to be called at module unload
     static int dummy = 0;
     m.attr("_cleanup") = nb::capsule(&dummy, [](void *) noexcept {

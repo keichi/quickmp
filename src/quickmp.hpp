@@ -46,4 +46,9 @@ void abjoin(const double *T1, const double *T2, double *P,
 // stream: VE stream number (ignored for CPU)
 void sleep_us(uint64_t microseconds, int stream = 0);
 
+// Get number of available streams for parallel execution
+// CPU backend: returns number of CPU cores
+// VE backend: returns number of VE streams for current context
+int get_stream_count();
+
 } // namespace quickmp
