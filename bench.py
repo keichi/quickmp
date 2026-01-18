@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Benchmark for quickmp matrix profile computation with multiple streams."""
+"""Benchmark for quickmp matrix profile computation with multiple devices and streams."""
 
 import argparse
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -26,8 +27,12 @@ def main():
         help="Subsequence window size (default: 10)"
     )
     parser.add_argument(
-        "-s", "--streams", type=int, default=16,
-        help="Number of streams for parallel execution (default: 16)"
+        "-d", "--devices", type=int, default=None,
+        help="Number of devices to use (default: all available)"
+    )
+    parser.add_argument(
+        "-s", "--streams", type=int, default=None,
+        help="Number of streams per device (default: all available)"
     )
     args = parser.parse_args()
 
@@ -37,15 +42,35 @@ def main():
 
     quickmp.initialize()
 
+    max_devices = quickmp.get_device_count()
+    if args.devices is not None and args.devices > max_devices:
+        quickmp.finalize()
+        sys.exit(f"Error: Requested {args.devices} devices, but only {max_devices} available")
+    num_devices = args.devices if args.devices else max_devices
+
+    num_streams = None
+    for d in range(num_devices):
+        quickmp.use_device(d)
+        max_streams = quickmp.get_stream_count()
+        if args.streams is not None and args.streams > max_streams:
+            quickmp.finalize()
+            sys.exit(f"Error: Device {d} has only {max_streams} streams, but {args.streams} requested")
+        if num_streams is None:
+            num_streams = args.streams if args.streams else max_streams
+
+    total_workers = num_devices * num_streams
+
     def compute_mp(task):
         idx, T = task
-        stream_id = idx % args.streams
+        device_id = idx % num_devices
+        stream_id = (idx // num_devices) % num_streams
+        quickmp.use_device(device_id)
         return quickmp.selfjoin(T, args.window, stream=stream_id)
 
-    print(f"Computing matrix profiles with {args.streams} streams...")
+    print(f"Computing matrix profiles with {num_devices} device(s) x {num_streams} stream(s) = {total_workers} workers...")
     start = time.perf_counter()
 
-    with ThreadPoolExecutor(max_workers=args.streams) as executor:
+    with ThreadPoolExecutor(max_workers=total_workers) as executor:
         results = list(executor.map(compute_mp, enumerate(timeseries_list)))
 
     elapsed = time.perf_counter() - start
