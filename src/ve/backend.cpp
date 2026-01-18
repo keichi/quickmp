@@ -93,7 +93,7 @@ struct DeviceContext {
 };
 
 std::vector<std::unique_ptr<DeviceContext>> g_devices;  // All device contexts
-int g_current_device = -1;                              // Currently selected device ID
+thread_local int g_current_device = -1;                 // Currently selected device ID (per-thread)
 
 // Get the current device context
 DeviceContext& current_device() {
