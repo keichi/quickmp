@@ -1,17 +1,46 @@
 #include "quickmp.hpp"
 #include "cpu/internal.hpp"
 
+#include <stdexcept>
 #include <unistd.h>
+
+namespace {
+
+bool g_initialized = false;
+
+} // anonymous namespace
 
 namespace quickmp {
 
-void initialize(int device) {
-    // device is ignored for CPU backend
-    (void)device;
+void initialize() {
+    if (g_initialized) {
+        throw std::runtime_error("quickmp already initialized. Call finalize() first.");
+    }
+    g_initialized = true;
 }
 
 void finalize() {
-    // No finalization needed for CPU backend
+    if (!g_initialized) {
+        throw std::runtime_error("quickmp not initialized.");
+    }
+    g_initialized = false;
+}
+
+int get_device_count() {
+    // CPU backend always has exactly 1 device
+    return 1;
+}
+
+void use_device(int device) {
+    if (device != 0) {
+        throw std::runtime_error("CPU backend only supports device 0.");
+    }
+    // No-op for CPU backend
+}
+
+int get_current_device() {
+    // CPU backend always uses device 0
+    return 0;
 }
 
 void sliding_dot_product(const double *T, const double *Q, double *QT,

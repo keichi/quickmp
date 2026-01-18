@@ -21,19 +21,17 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "initialize",
-        [](int device) {
+        []() {
             if (g_initialized) {
                 throw std::runtime_error("quickmp already initialized. Call finalize() first.");
             }
-            quickmp::initialize(device);
+            quickmp::initialize();
             g_initialized = true;
         },
-        "device"_a = 0,
         R"doc(
         Initialize the quickmp backend.
 
-        Args:
-          device: Device number (default: 0). Only used for VE backend.
+        Initializes all available devices and selects device 0.
     )doc");
 
     m.def(
@@ -47,6 +45,52 @@ NB_MODULE(_quickmp, m) {
         },
         R"doc(
         Finalize the quickmp backend.
+    )doc");
+
+    m.def(
+        "get_device_count",
+        []() {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            return quickmp::get_device_count();
+        },
+        R"doc(
+        Get the number of available devices.
+
+        Returns:
+          Number of available devices (VE: number of VE devices, CPU: always 1)
+    )doc");
+
+    m.def(
+        "use_device",
+        [](int device) {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            quickmp::use_device(device);
+        },
+        "device"_a,
+        R"doc(
+        Switch to the specified device.
+
+        Args:
+          device: Device ID to use
+    )doc");
+
+    m.def(
+        "get_current_device",
+        []() {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            return quickmp::get_current_device();
+        },
+        R"doc(
+        Get the currently selected device ID.
+
+        Returns:
+          Currently selected device ID
     )doc");
 
     m.def(

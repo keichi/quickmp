@@ -5,11 +5,20 @@
 
 namespace quickmp {
 
-// Initialize backend with device number (VE only, ignored for CPU)
-void initialize(int device = 0);
+// Initialize backend (initializes all available devices, selects device 0)
+void initialize();
 
 // Finalize backend
 void finalize();
+
+// Get number of available devices (VE: number of VE devices, CPU: always 1)
+int get_device_count();
+
+// Switch to the specified device
+void use_device(int device);
+
+// Get the currently selected device ID
+int get_current_device();
 
 // Compute sliding dot product between T and Q
 // stream: VE stream number (ignored for CPU)

@@ -88,7 +88,7 @@ def test_init_finalize():
     quickmp.finalize()
 
     # Should be able to init again
-    quickmp.initialize(device=0)
+    quickmp.initialize()
 
     # Double init should raise
     with pytest.raises(RuntimeError):
@@ -102,6 +102,50 @@ def test_init_finalize():
 
     # Re-init for fixture cleanup
     quickmp.initialize()
+
+
+def test_device_count():
+    """Test get_device_count returns positive number."""
+    count = quickmp.get_device_count()
+    assert count >= 1, "Device count should be at least 1"
+
+
+def test_get_current_device():
+    """Test get_current_device returns valid device ID."""
+    device_id = quickmp.get_current_device()
+    count = quickmp.get_device_count()
+    assert 0 <= device_id < count, "Current device ID should be valid"
+
+
+def test_use_device():
+    """Test use_device switches devices correctly."""
+    count = quickmp.get_device_count()
+
+    # Should be able to switch to device 0
+    quickmp.use_device(0)
+    assert quickmp.get_current_device() == 0
+
+    # Invalid device should raise
+    with pytest.raises(RuntimeError):
+        quickmp.use_device(count)
+
+    with pytest.raises(RuntimeError):
+        quickmp.use_device(-1)
+
+
+def test_computation_on_device():
+    """Test computation works after device selection."""
+    n, m = 100, 10
+    T = np.random.rand(n)
+
+    # Explicitly select device 0
+    quickmp.use_device(0)
+
+    # Run computation
+    mp = quickmp.selfjoin(T, m)
+    mp2 = stumpy.stump(T, m)[:, 0].astype(np.float64)
+
+    assert np.allclose(mp, mp2)
 
 
 def test_multithread_selfjoin():
