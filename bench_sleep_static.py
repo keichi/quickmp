@@ -19,26 +19,23 @@ def main():
                         help="Number of devices to use (default: all available)")
     parser.add_argument("-s", "--streams", type=int, default=None,
                         help="Number of streams per device (default: all available)")
-    parser.add_argument("--device-start", type=int, default=0,
-                        help="Starting device ID (default: 0)")
     args = parser.parse_args()
 
-    device_start = args.device_start
-    num_devices_requested = args.devices if args.devices else 0  # 0 means all
+    quickmp.initialize()
 
-    # Initialize only the requested devices
-    quickmp.initialize(device_start=device_start, device_count=num_devices_requested)
-
-    # Get actual number of initialized devices
-    num_devices = quickmp.get_device_count()
+    max_devices = quickmp.get_device_count()
+    if args.devices is not None and args.devices > max_devices:
+        quickmp.finalize()
+        sys.exit(f"Error: Requested {args.devices} devices, but only {max_devices} available")
+    num_devices = args.devices if args.devices else max_devices
 
     num_streams = None
     for d in range(num_devices):
-        quickmp.use_device(d)  # Device index is relative to initialized devices
+        quickmp.use_device(d)
         max_streams = quickmp.get_stream_count()
         if args.streams is not None and args.streams > max_streams:
             quickmp.finalize()
-            sys.exit(f"Error: Device {device_start + d} has only {max_streams} streams, but {args.streams} requested")
+            sys.exit(f"Error: Device {d} has only {max_streams} streams, but {args.streams} requested")
         if num_streams is None:
             num_streams = args.streams if args.streams else max_streams
 
