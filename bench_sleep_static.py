@@ -19,23 +19,26 @@ def main():
                         help="Number of devices to use (default: all available)")
     parser.add_argument("-s", "--streams", type=int, default=None,
                         help="Number of streams per device (default: all available)")
+    parser.add_argument("--device-start", type=int, default=0,
+                        help="Starting device ID (default: 0)")
     args = parser.parse_args()
 
-    quickmp.initialize()
+    device_start = args.device_start
+    num_devices_requested = args.devices if args.devices else 0  # 0 means all
 
-    max_devices = quickmp.get_device_count()
-    if args.devices is not None and args.devices > max_devices:
-        quickmp.finalize()
-        sys.exit(f"Error: Requested {args.devices} devices, but only {max_devices} available")
-    num_devices = args.devices if args.devices else max_devices
+    # Initialize only the requested devices
+    quickmp.initialize(device_start=device_start, device_count=num_devices_requested)
+
+    # Get actual number of initialized devices
+    num_devices = quickmp.get_device_count()
 
     num_streams = None
     for d in range(num_devices):
-        quickmp.use_device(d)
+        quickmp.use_device(d)  # Device index is relative to initialized devices
         max_streams = quickmp.get_stream_count()
         if args.streams is not None and args.streams > max_streams:
             quickmp.finalize()
-            sys.exit(f"Error: Device {d} has only {max_streams} streams, but {args.streams} requested")
+            sys.exit(f"Error: Device {device_start + d} has only {max_streams} streams, but {args.streams} requested")
         if num_streams is None:
             num_streams = args.streams if args.streams else max_streams
 
@@ -47,20 +50,23 @@ def main():
         for s in range(num_streams):
             quickmp.sleep_us(100, s)
 
-    def worker_func(worker_id, device_id, stream_id, task_count):
-        """Worker thread function with fixed device and stream."""
-        quickmp.use_device(device_id)
-        for _ in range(task_count):
-            quickmp.sleep_us(args.microseconds, stream_id)
-
     # Distribute tasks statically to workers
     base_tasks = args.count // total_workers
     remainder = args.count % total_workers
     worker_tasks = [base_tasks + (1 if i < remainder else 0) for i in range(total_workers)]
 
-    # Run benchmark
-    start = time.perf_counter()
+    # Create barrier for synchronization (total_workers + 1 main thread)
+    barrier = threading.Barrier(total_workers + 1)
 
+    def worker_func(worker_id, device_id, stream_id, task_count):
+        """Worker thread function with fixed device and stream."""
+        quickmp.use_device(device_id)
+        # Wait for all threads to be ready
+        barrier.wait()
+        for _ in range(task_count):
+            quickmp.sleep_us(args.microseconds, stream_id)
+
+    # Start all threads
     threads = []
     for worker_id in range(total_workers):
         device_id = worker_id % num_devices
@@ -71,6 +77,10 @@ def main():
         )
         threads.append(t)
         t.start()
+
+    # Wait for all threads to initialize, then start timing
+    barrier.wait()
+    start = time.perf_counter()
 
     for t in threads:
         t.join()

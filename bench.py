@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -60,18 +61,42 @@ def main():
 
     total_workers = num_devices * num_streams
 
+    # Warm up all devices and streams
+    for d in range(num_devices):
+        quickmp.use_device(d)
+        for s in range(num_streams):
+            quickmp.selfjoin(timeseries_list[0], args.window, stream=s)
+
+    # Create barrier for synchronization
+    barrier = threading.Barrier(total_workers + 1)
+    first_task_done = [False] * total_workers  # Track first task per worker
+
     def compute_mp(task):
         idx, T = task
         device_id = idx % num_devices
         stream_id = (idx // num_devices) % num_streams
+        worker_id = device_id + stream_id * num_devices
         quickmp.use_device(device_id)
+
+        # First task of each worker waits on barrier
+        if not first_task_done[worker_id]:
+            first_task_done[worker_id] = True
+            barrier.wait()
+
         return quickmp.selfjoin(T, args.window, stream=stream_id)
 
     print(f"Computing matrix profiles with {num_devices} device(s) x {num_streams} stream(s) = {total_workers} workers...")
-    start = time.perf_counter()
 
     with ThreadPoolExecutor(max_workers=total_workers) as executor:
-        results = list(executor.map(compute_mp, enumerate(timeseries_list)))
+        # Submit all tasks
+        futures = [executor.submit(compute_mp, (i, T)) for i, T in enumerate(timeseries_list)]
+
+        # Wait for all workers to be ready, then start timing
+        barrier.wait()
+        start = time.perf_counter()
+
+        # Collect results
+        results = [f.result() for f in futures]
 
     elapsed = time.perf_counter() - start
 
