@@ -13,9 +13,7 @@ bool g_initialized = false;
 
 namespace quickmp {
 
-void initialize(int device_start, int device_count) {
-    (void)device_start;  // Ignored for CPU backend
-    (void)device_count;  // Ignored for CPU backend
+void initialize() {
     if (g_initialized) {
         throw std::runtime_error("quickmp already initialized. Call finalize() first.");
     }
