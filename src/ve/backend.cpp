@@ -107,7 +107,7 @@ DeviceContext& current_device() {
 
 namespace quickmp {
 
-void initialize() {
+void initialize(int device_start, int device_count_requested) {
     if (!g_devices.empty()) {
         throw std::runtime_error("quickmp already initialized. Call finalize() first.");
     }
@@ -115,18 +115,35 @@ void initialize() {
     VEDA_CHECK(vedaInit(0));
 
     // Get number of available devices
-    int device_count;
-    VEDA_CHECK(vedaDeviceGetCount(&device_count));
+    int total_devices;
+    VEDA_CHECK(vedaDeviceGetCount(&total_devices));
 
-    if (device_count == 0) {
+    if (total_devices == 0) {
         throw std::runtime_error("No VE devices found.");
+    }
+
+    // Determine which devices to initialize
+    int device_end;
+    if (device_count_requested <= 0) {
+        // Initialize all devices from device_start
+        device_end = total_devices;
+    } else {
+        device_end = device_start + device_count_requested;
+        if (device_end > total_devices) {
+            throw std::runtime_error("Requested devices exceed available devices.");
+        }
+    }
+
+    if (device_start < 0 || device_start >= total_devices) {
+        throw std::runtime_error("Invalid device_start: " + std::to_string(device_start));
     }
 
     std::string kernel_path = get_kernel_lib_path();
 
-    // Initialize all devices
-    g_devices.reserve(device_count);
-    for (int i = 0; i < device_count; ++i) {
+    // Initialize only requested devices
+    int num_devices = device_end - device_start;
+    g_devices.reserve(num_devices);
+    for (int i = device_start; i < device_end; ++i) {
         g_devices.emplace_back(std::make_unique<DeviceContext>());
         DeviceContext& dev = *g_devices.back();
         VEDA_CHECK(vedaCtxCreate(&dev.ctx, VEDA_CONTEXT_MODE_SCALAR, i));
@@ -140,7 +157,7 @@ void initialize() {
         VEDA_CHECK(vedaModuleGetFunction(&dev.sleep, dev.mod, "sleep_kernel"));
     }
 
-    // Select device 0 by default
+    // Select first initialized device by default
     g_current_device = 0;
 }
 

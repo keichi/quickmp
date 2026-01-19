@@ -21,17 +21,20 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "initialize",
-        []() {
+        [](int device_start, int device_count) {
             if (g_initialized) {
                 throw std::runtime_error("quickmp already initialized. Call finalize() first.");
             }
-            quickmp::initialize();
+            quickmp::initialize(device_start, device_count);
             g_initialized = true;
         },
+        "device_start"_a = 0, "device_count"_a = 0,
         R"doc(
         Initialize the quickmp backend.
 
-        Initializes all available devices and selects device 0.
+        Args:
+          device_start: First device ID to initialize (default: 0)
+          device_count: Number of devices to initialize (default: 0 = all from device_start)
     )doc");
 
     m.def(

@@ -5,8 +5,10 @@
 
 namespace quickmp {
 
-// Initialize backend (initializes all available devices, selects device 0)
-void initialize();
+// Initialize backend
+// device_start: first device ID to initialize (default: 0)
+// device_count: number of devices to initialize (default: 0 = all from device_start)
+void initialize(int device_start = 0, int device_count = 0);
 
 // Finalize backend
 void finalize();
