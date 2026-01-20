@@ -179,8 +179,7 @@ NB_MODULE(_quickmp, m) {
           T: Time series
           m: Window size
           stream: Stream number (default: 0). Only used for VE backend.
-          normalize: If True, use Z-normalized Euclidean distance (default).
-                     If False, use raw Euclidean distance.
+          normalize: If True (default), use Z-normalized Euclidean distance. If False, use raw Euclidean distance.
 
         Returns:
           Matrix profile
@@ -212,8 +211,7 @@ NB_MODULE(_quickmp, m) {
           T2: Time series
           m: Window size
           stream: Stream number (default: 0). Only used for VE backend.
-          normalize: If True, use Z-normalized Euclidean distance (default).
-                     If False, use raw Euclidean distance.
+          normalize: If True (default), use Z-normalized Euclidean distance. If False, use raw Euclidean distance.
 
         Returns:
           Matrix profile
