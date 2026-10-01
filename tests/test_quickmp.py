@@ -199,3 +199,19 @@ def test_multithread_selfjoin():
         results = list(executor.map(worker, test_data))
 
     assert len(results) == num_threads
+
+
+def test_invalid_window():
+    T = np.random.rand(10)
+    for f in [lambda: quickmp.selfjoin(T, 11), lambda: quickmp.selfjoin(T, 0),
+              lambda: quickmp.compute_mean_std(T, 11),
+              lambda: quickmp.sliding_dot_product(T, np.random.rand(11)),
+              lambda: quickmp.abjoin(T, np.random.rand(5), 8)]:
+        with pytest.raises(ValueError):
+            f()
+
+
+@pytest.mark.parametrize("normalize", [True, False])
+def test_selfjoin_exclusion_zone_exceeds_output(normalize):
+    # n - m + 1 = 2 < excl_zone + 1 = 4; must not write past the output
+    assert len(quickmp.selfjoin(np.random.rand(10), 9, normalize=normalize)) == 2

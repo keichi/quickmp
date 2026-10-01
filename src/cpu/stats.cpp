@@ -1,5 +1,7 @@
 #include <cmath>
 
+#include "cpu/internal.hpp"
+
 void compute_squared_sum(const double *T, double *sum, size_t n, size_t m)
 {
     double sum_T2 = 0.0;

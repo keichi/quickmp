@@ -16,6 +16,12 @@ using pyarr_t = nb::ndarray<double, nb::numpy, nb::ndim<1>, nb::c_contig, nb::de
 
 static bool g_initialized = false;
 
+static void check_window(size_t n, size_t m) {
+    if (m == 0 || m > n) {
+        throw std::invalid_argument("Window size m must satisfy 1 <= m <= len(T).");
+    }
+}
+
 NB_MODULE(_quickmp, m) {
     m.doc() = "Quickly compute matrix profiles";
 
@@ -101,6 +107,7 @@ NB_MODULE(_quickmp, m) {
             }
             size_t n = T.shape(0);
             size_t m = Q.shape(0);
+            check_window(n, m);
 
             std::vector<double> QT(n - m + 1);
 
@@ -131,6 +138,7 @@ NB_MODULE(_quickmp, m) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
             size_t n = T.shape(0);
+            check_window(n, m);
             std::vector<double> mu(n - m + 1);
             std::vector<double> sigma(n - m + 1);
 
@@ -162,6 +170,7 @@ NB_MODULE(_quickmp, m) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
             size_t n = T.shape(0);
+            check_window(n, m);
             std::vector<double> P(n - m + 1);
 
             {
@@ -193,6 +202,8 @@ NB_MODULE(_quickmp, m) {
             }
             size_t n1 = T1.shape(0);
             size_t n2 = T2.shape(0);
+            check_window(n1, m);
+            check_window(n2, m);
             std::vector<double> P(n1 - m + 1);
 
             {

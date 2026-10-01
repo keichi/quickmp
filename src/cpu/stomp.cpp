@@ -29,7 +29,7 @@ void selfjoin(const double *__restrict _T, double *__restrict _P, size_t n, size
         P[j] = (QT[j] - m * mu[0] * mu[j]) * sigma_inv[0] * sigma_inv[j];
     }
 
-    for (size_t j = 0; j < excl_zone + 1; j++) {
+    for (size_t j = 0; j < std::min(excl_zone + 1, n - m + 1); j++) {
         P[j] = 0.0;
     }
 
@@ -157,7 +157,7 @@ void selfjoin_ed(const double *__restrict _T, double *__restrict _P, size_t n, s
     }
 
     // Set exclusion zone to infinity (minimization problem)
-    for (size_t j = 0; j < excl_zone + 1; j++) {
+    for (size_t j = 0; j < std::min(excl_zone + 1, n - m + 1); j++) {
         P[j] = INFINITY;
     }
 
