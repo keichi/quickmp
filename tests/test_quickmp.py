@@ -210,3 +210,8 @@ def test_invalid_window():
         with pytest.raises(ValueError):
             f()
 
+
+@pytest.mark.parametrize("normalize", [True, False])
+def test_selfjoin_exclusion_zone_exceeds_output(normalize):
+    # n - m + 1 = 2 < excl_zone + 1 = 4; must not write past the output
+    assert len(quickmp.selfjoin(np.random.rand(10), 9, normalize=normalize)) == 2
