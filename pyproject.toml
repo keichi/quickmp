@@ -60,4 +60,6 @@ environment = {RELEASE_FLAGS="-march=x86-64-v3 -ffast-math"}
 
 [[tool.cibuildwheel.overrides]]
 select = "*-macosx_arm64*"
-environment = {RELEASE_FLAGS="-mcpu=apple-m1 -ffast-math"}
+before-all = "brew install libomp"
+# delocate bundles Homebrew's libomp, which requires the macOS version it was built for
+environment = {RELEASE_FLAGS="-mcpu=apple-m1 -ffast-math", MACOSX_DEPLOYMENT_TARGET="14.0"}

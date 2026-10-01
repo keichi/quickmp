@@ -33,6 +33,10 @@ you can install from source:
    cd quickmp
    pip install -e .
 
+The CPU backend uses OpenMP to utilize multiple cores. On macOS, install
+libomp with Homebrew (``brew install libomp``) beforehand; otherwise quickmp
+runs on a single thread.
+
 To include test dependencies:
 
 .. code-block:: bash

@@ -57,7 +57,13 @@ else()
   target_include_directories(quickmp-core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(quickmp-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-  # Without OpenMP (e.g., AppleClang), everything runs on a single thread
+  # AppleClang does not ship OpenMP, so use Homebrew's libomp if available
+  if(APPLE AND NOT DEFINED OpenMP_ROOT)
+    execute_process(COMMAND brew --prefix libomp OUTPUT_VARIABLE OpenMP_ROOT
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  endif()
+
+  # Without OpenMP, everything runs on a single thread
   find_package(OpenMP COMPONENTS CXX)
   if(OpenMP_CXX_FOUND)
     target_link_libraries(quickmp-core PUBLIC OpenMP::OpenMP_CXX)
