@@ -81,32 +81,25 @@ select which device to use:
 
    quickmp.finalize()
 
-Parallel Execution with Streams
--------------------------------
+Batch Computation
+-----------------
 
-quickmp supports stream-based parallelism for concurrent computations:
+``selfjoin`` and ``abjoin`` use all cores of the device for a single time
+series. To compute the matrix profiles of many time series of the same length,
+``selfjoin_batch`` is faster since it processes the time series in parallel:
 
 .. code-block:: python
 
-   from concurrent.futures import ThreadPoolExecutor
    import numpy as np
    import quickmp
 
    quickmp.initialize()
 
-   # Get available streams
-   num_streams = quickmp.get_stream_count()
-
-   def compute_on_stream(stream_id, data):
-       return quickmp.selfjoin(data, m=100, stream=stream_id)
-
-   # Run computations in parallel using different streams
-   with ThreadPoolExecutor(max_workers=num_streams) as executor:
-       datasets = [np.random.rand(1000) for _ in range(num_streams)]
-       futures = [
-           executor.submit(compute_on_stream, i, data)
-           for i, data in enumerate(datasets)
-       ]
-       results = [f.result() for f in futures]
+   # Each row is a time series
+   T = np.random.rand(1000, 7200)
+   P = quickmp.selfjoin_batch(T, m=10)  # shape: (1000, 7191)
 
    quickmp.finalize()
+
+To use multiple devices, call ``use_device`` in one thread per device and
+split the time series among the threads.

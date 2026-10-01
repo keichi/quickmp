@@ -40,7 +40,7 @@ def test_compute_mean_std(n, m):
         assert np.isclose(np.std(T[i:i+m]), sigma[i])
 
 
-@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100), (16, 4), (20, 3)])
 def test_selfjoin(n, m):
     T = np.random.rand(n)
 
@@ -50,7 +50,7 @@ def test_selfjoin(n, m):
     assert np.allclose(mp, mp2)
 
 
-@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100), (16, 4), (20, 3)])
 def test_abjoin(n, m):
     T1 = np.random.rand(n)
     T2 = np.random.rand(n)
@@ -61,7 +61,7 @@ def test_abjoin(n, m):
     assert np.allclose(mp, mp2)
 
 
-@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100), (16, 4), (20, 3)])
 def test_selfjoin_unnormalized(n, m):
     T = np.random.rand(n)
 
@@ -71,7 +71,7 @@ def test_selfjoin_unnormalized(n, m):
     assert np.allclose(mp, mp2)
 
 
-@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100)])
+@pytest.mark.parametrize("n,m", [(100, 10), (500, 20), (1000, 100), (16, 4), (20, 3)])
 def test_abjoin_unnormalized(n, m):
     T1 = np.random.rand(n)
     T2 = np.random.rand(n)
@@ -80,6 +80,20 @@ def test_abjoin_unnormalized(n, m):
 
     mp2 = stumpy.stump(T_A=T1, T_B=T2, m=m, ignore_trivial=False, normalize=False)[:, 0].astype(np.float64)
     assert np.allclose(mp, mp2)
+
+
+@pytest.mark.parametrize("count", [1, 3, 40])
+@pytest.mark.parametrize("normalize", [True, False])
+def test_selfjoin_batch(count, normalize):
+    n, m = 200, 10
+    T = np.random.rand(count, n)
+
+    P = quickmp.selfjoin_batch(T, m, normalize=normalize)
+
+    assert P.shape == (count, n - m + 1)
+    for k in range(count):
+        expected = stumpy.stump(T[k], m, normalize=normalize)[:, 0].astype(np.float64)
+        assert np.allclose(P[k], expected)
 
 
 def test_init_finalize():
@@ -148,30 +162,12 @@ def test_computation_on_device():
     assert np.allclose(mp, mp2)
 
 
-def test_get_stream_count():
-    """Test get_stream_count returns positive integer when initialized."""
-    count = quickmp.get_stream_count()
-    assert isinstance(count, int)
-    assert count >= 1
-
-
 def test_get_device_count_not_initialized():
     """Test get_device_count raises when not initialized."""
     quickmp.finalize()
 
     with pytest.raises(RuntimeError):
         quickmp.get_device_count()
-
-    # Re-init for fixture cleanup
-    quickmp.initialize()
-
-
-def test_get_stream_count_not_initialized():
-    """Test get_stream_count raises when not initialized."""
-    quickmp.finalize()
-
-    with pytest.raises(RuntimeError):
-        quickmp.get_stream_count()
 
     # Re-init for fixture cleanup
     quickmp.initialize()
@@ -190,26 +186,15 @@ def test_multithread_selfjoin():
 
     def worker(args):
         thread_id, T, expected = args
-        mp = quickmp.selfjoin(T, m, stream=thread_id)
+        mp = quickmp.selfjoin(T, m)
         assert np.allclose(mp, expected), \
-            f"Stream {thread_id}: max diff = {np.max(np.abs(mp - expected))}"
+            f"Thread {thread_id}: max diff = {np.max(np.abs(mp - expected))}"
         return thread_id
 
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         results = list(executor.map(worker, test_data))
 
     assert len(results) == num_threads
-
-
-def test_backend_error_raises():
-    # VE: an invalid stream must raise instead of terminating the process.
-    # CPU ignores the stream argument.
-    T = np.random.rand(100)
-    try:
-        quickmp.selfjoin(T, 10, stream=10000)
-    except RuntimeError:
-        pass
-    assert np.allclose(quickmp.selfjoin(T, 10), stumpy.stump(T, 10)[:, 0].astype(np.float64))
 
 
 def test_invalid_window():

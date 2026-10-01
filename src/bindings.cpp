@@ -13,6 +13,9 @@ using namespace nb::literals;
 using const_pyarr_t =
     nb::ndarray<const double, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 using pyarr_t = nb::ndarray<double, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using const_pyarr2_t =
+    nb::ndarray<const double, nb::numpy, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+using pyarr2_t = nb::ndarray<double, nb::numpy, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
 
 static bool g_initialized = false;
 
@@ -101,7 +104,7 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "sliding_dot_product",
-        [](const_pyarr_t T, const_pyarr_t Q, int stream) {
+        [](const_pyarr_t T, const_pyarr_t Q) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -113,19 +116,18 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::sliding_dot_product(T.data(), Q.data(), QT.data(), n, m, stream);
+                quickmp::sliding_dot_product(T.data(), Q.data(), QT.data(), n, m);
             }
 
             return pyarr_t(QT.data(), {QT.size()}).cast();
         },
-        "T"_a, "Q"_a, "stream"_a = 0,
+        "T"_a, "Q"_a,
         R"doc(
         Compute the sliding dot product between time series T and Q.
 
         Args:
           T: Time series
           Q: Time series
-          stream: Stream number (default: 0). Only used for VE backend.
 
         Returns:
           Sliding dot product
@@ -133,7 +135,7 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "compute_mean_std",
-        [](const_pyarr_t T, size_t m, int stream) {
+        [](const_pyarr_t T, size_t m) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -144,20 +146,19 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::compute_mean_std(T.data(), mu.data(), sigma.data(), n, m, stream);
+                quickmp::compute_mean_std(T.data(), mu.data(), sigma.data(), n, m);
             }
 
             return std::make_pair(pyarr_t(mu.data(), {mu.size()}).cast(),
                                   pyarr_t(sigma.data(), {sigma.size()}).cast());
         },
-        "T"_a, "m"_a, "stream"_a = 0,
+        "T"_a, "m"_a,
         R"doc(
         Compute the mean and standard deviation of every subsequence in time series T.
 
         Args:
           T: Time series
           m: Window size
-          stream: Stream number (default: 0). Only used for VE backend.
 
         Returns:
           Tuple of mean and standard deviation
@@ -165,7 +166,7 @@ NB_MODULE(_quickmp, m) {
 
     m.def(
         "selfjoin",
-        [](const_pyarr_t T, size_t m, int stream, bool normalize) {
+        [](const_pyarr_t T, size_t m, bool normalize) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -175,19 +176,18 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::selfjoin(T.data(), P.data(), n, m, stream, normalize);
+                quickmp::selfjoin(T.data(), P.data(), n, m, normalize);
             }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
-        "T"_a, "m"_a, "stream"_a = 0, "normalize"_a = true,
+        "T"_a, "m"_a, "normalize"_a = true,
         R"doc(
         Compute the matrix profile for time series T.
 
         Args:
           T: Time series
           m: Window size
-          stream: Stream number (default: 0). Only used for VE backend.
           normalize: If True (default), use Z-normalized Euclidean distance. If False, use raw Euclidean distance.
 
         Returns:
@@ -195,8 +195,42 @@ NB_MODULE(_quickmp, m) {
     )doc");
 
     m.def(
+        "selfjoin_batch",
+        [](const_pyarr2_t T, size_t m, bool normalize) {
+            if (!g_initialized) {
+                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
+            }
+            size_t count = T.shape(0);
+            size_t n = T.shape(1);
+            check_window(n, m);
+            std::vector<double> P(count * (n - m + 1));
+
+            {
+                nb::gil_scoped_release release;
+                quickmp::selfjoin_batch(T.data(), P.data(), count, n, m, normalize);
+            }
+
+            return pyarr2_t(P.data(), {count, n - m + 1}).cast();
+        },
+        "T"_a, "m"_a, "normalize"_a = true,
+        R"doc(
+        Compute the matrix profiles for a batch of time series of the same length.
+
+        Time series are processed in parallel, which is faster than calling selfjoin() for each
+        time series when there are many of them.
+
+        Args:
+          T: 2D array where each row is a time series
+          m: Window size
+          normalize: If True (default), use Z-normalized Euclidean distance. If False, use raw Euclidean distance.
+
+        Returns:
+          2D array where each row is the matrix profile of the corresponding time series
+    )doc");
+
+    m.def(
         "abjoin",
-        [](const_pyarr_t T1, const_pyarr_t T2, size_t m, int stream, bool normalize) {
+        [](const_pyarr_t T1, const_pyarr_t T2, size_t m, bool normalize) {
             if (!g_initialized) {
                 throw std::runtime_error("quickmp not initialized. Call initialize() first.");
             }
@@ -208,12 +242,12 @@ NB_MODULE(_quickmp, m) {
 
             {
                 nb::gil_scoped_release release;
-                quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, stream, normalize);
+                quickmp::abjoin(T1.data(), T2.data(), P.data(), n1, n2, m, normalize);
             }
 
             return pyarr_t(P.data(), {P.size()}).cast();
         },
-        "T1"_a, "T2"_a, "m"_a, "stream"_a = 0, "normalize"_a = true,
+        "T1"_a, "T2"_a, "m"_a, "normalize"_a = true,
         R"doc(
         Compute the matrix profile between time series T1 and T2.
 
@@ -221,47 +255,10 @@ NB_MODULE(_quickmp, m) {
           T1: Time series
           T2: Time series
           m: Window size
-          stream: Stream number (default: 0). Only used for VE backend.
           normalize: If True (default), use Z-normalized Euclidean distance. If False, use raw Euclidean distance.
 
         Returns:
           Matrix profile
-    )doc");
-
-    m.def(
-        "sleep_us",
-        [](uint64_t microseconds, int stream) {
-            if (!g_initialized) {
-                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
-            }
-            {
-                nb::gil_scoped_release release;
-                quickmp::sleep_us(microseconds, stream);
-            }
-        },
-        "microseconds"_a, "stream"_a = 0,
-        R"doc(
-        Sleep for specified microseconds on VE (for benchmarking).
-
-        Args:
-          microseconds: Sleep duration in microseconds
-          stream: Stream number (default: 0). Only used for VE backend.
-    )doc");
-
-    m.def(
-        "get_stream_count",
-        []() {
-            if (!g_initialized) {
-                throw std::runtime_error("quickmp not initialized. Call initialize() first.");
-            }
-            return quickmp::get_stream_count();
-        },
-        R"doc(
-        Get the number of available streams for parallel execution.
-
-        Returns:
-          int: Number of available streams (CPU cores for CPU backend,
-               VE streams for VE backend)
     )doc");
 
     // Register cleanup function to be called at module unload

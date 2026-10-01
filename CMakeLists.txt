@@ -38,8 +38,7 @@ if(VEDA_FOUND)
   add_library(quickmp-device SHARED
     src/ve/dot_product.vcpp
     src/ve/stats.vcpp
-    src/ve/stomp.vcpp
-    src/ve/sleep.vcpp)
+    src/ve/stomp.vcpp)
   target_include_directories(quickmp-device PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   add_library(quickmp-core src/ve/backend.cpp)
@@ -54,13 +53,18 @@ else()
   add_library(quickmp-core
     src/cpu/dot_product.cpp
     src/cpu/stats.cpp
-    src/cpu/stomp.cpp
     src/cpu/backend.cpp)
   target_include_directories(quickmp-core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   set_target_properties(quickmp-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+  # Without OpenMP (e.g., AppleClang), everything runs on a single thread
+  find_package(OpenMP COMPONENTS CXX)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(quickmp-core PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+
   if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
-    set_source_files_properties(src/cpu/stomp.cpp PROPERTIES COMPILE_FLAGS "-qopt-zmm-usage=high")
+    set_source_files_properties(src/cpu/backend.cpp PROPERTIES COMPILE_FLAGS "-qopt-zmm-usage=high")
   endif()
 endif()
 

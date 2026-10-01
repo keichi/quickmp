@@ -17,12 +17,12 @@ Device Management
 
 .. autofunction:: quickmp.get_current_device
 
-.. autofunction:: quickmp.get_stream_count
-
 Matrix Profile Computation
 --------------------------
 
 .. autofunction:: quickmp.selfjoin
+
+.. autofunction:: quickmp.selfjoin_batch
 
 .. autofunction:: quickmp.abjoin
 

@@ -7,10 +7,10 @@ __all__ = [
     "get_device_count",
     "use_device",
     "get_current_device",
-    "get_stream_count",
     "sliding_dot_product",
     "compute_mean_std",
     "selfjoin",
+    "selfjoin_batch",
     "abjoin",
     "__version__",
 ]
