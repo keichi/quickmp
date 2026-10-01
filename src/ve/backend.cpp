@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <dlfcn.h>
@@ -21,8 +22,8 @@ void veda_check(VEDAresult err, const char *file, int line) {
         const char *name, *str;
         vedaGetErrorName(err, &name);
         vedaGetErrorString(err, &str);
-        fprintf(stderr, "%s: %s @ %s:%i\n", name, str, file, line);
-        exit(1);
+        throw std::runtime_error(std::string(name) + ": " + str + " @ " + file + ":" +
+                                 std::to_string(line));
     }
 }
 
@@ -78,6 +79,20 @@ private:
     std::map<VEDAdeviceptr, size_t> allocated_sizes_;
 };
 
+// Returns a pool allocation on scope exit, so exceptions do not leak device memory
+class PoolPtr {
+public:
+    PoolPtr(MemoryPool &pool, size_t size) : pool_(pool), ptr_(pool.alloc(size)) {}
+    ~PoolPtr() { pool_.free(ptr_); }
+    PoolPtr(const PoolPtr &) = delete;
+    PoolPtr &operator=(const PoolPtr &) = delete;
+    operator VEDAdeviceptr() const { return ptr_; }
+
+private:
+    MemoryPool &pool_;
+    VEDAdeviceptr ptr_;
+};
+
 // Device context holding all resources for a single VE device
 struct DeviceContext {
     VEDAcontext ctx;
@@ -119,30 +134,37 @@ void initialize() {
 
     VEDA_CHECK(vedaInit(0));
 
-    // Get number of available devices
-    int device_count;
-    VEDA_CHECK(vedaDeviceGetCount(&device_count));
+    // Roll back on failure so that initialize() can be retried
+    try {
+        // Get number of available devices
+        int device_count;
+        VEDA_CHECK(vedaDeviceGetCount(&device_count));
 
-    if (device_count == 0) {
-        throw std::runtime_error("No VE devices found.");
-    }
+        if (device_count == 0) {
+            throw std::runtime_error("No VE devices found.");
+        }
 
-    std::string kernel_path = get_kernel_lib_path();
+        std::string kernel_path = get_kernel_lib_path();
 
-    // Initialize all devices
-    g_devices.reserve(device_count);
-    for (int i = 0; i < device_count; ++i) {
-        g_devices.emplace_back(std::make_unique<DeviceContext>());
-        DeviceContext& dev = *g_devices.back();
-        VEDA_CHECK(vedaCtxCreate(&dev.ctx, VEDA_CONTEXT_MODE_SCALAR, i));
-        VEDA_CHECK(vedaModuleLoad(&dev.mod, kernel_path.c_str()));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin, dev.mod, "selfjoin_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin, dev.mod, "abjoin_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin_ed, dev.mod, "selfjoin_ed_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin_ed, dev.mod, "abjoin_ed_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.compute_mean_std, dev.mod, "compute_mean_std_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.sliding_dot_product, dev.mod, "sliding_dot_product_kernel"));
-        VEDA_CHECK(vedaModuleGetFunction(&dev.sleep, dev.mod, "sleep_kernel"));
+        // Initialize all devices
+        g_devices.reserve(device_count);
+        for (int i = 0; i < device_count; ++i) {
+            g_devices.emplace_back(std::make_unique<DeviceContext>());
+            DeviceContext& dev = *g_devices.back();
+            VEDA_CHECK(vedaCtxCreate(&dev.ctx, VEDA_CONTEXT_MODE_SCALAR, i));
+            VEDA_CHECK(vedaModuleLoad(&dev.mod, kernel_path.c_str()));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin, dev.mod, "selfjoin_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin, dev.mod, "abjoin_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin_ed, dev.mod, "selfjoin_ed_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin_ed, dev.mod, "abjoin_ed_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.compute_mean_std, dev.mod, "compute_mean_std_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.sliding_dot_product, dev.mod, "sliding_dot_product_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.sleep, dev.mod, "sleep_kernel"));
+        }
+    } catch (...) {
+        g_devices.clear();
+        vedaExit();
+        throw;
     }
 
     // Select device 0 by default (vedaCtxCreate leaves the last device current)
@@ -150,10 +172,11 @@ void initialize() {
 }
 
 void finalize() {
-    // Clear memory pools for all devices
+    // Clear memory pools for all devices (best effort; vedaExit releases the rest)
     for (auto& dev : g_devices) {
-        VEDA_CHECK(vedaCtxSetCurrent(dev->ctx));
-        dev->pool.clear();
+        if (vedaCtxSetCurrent(dev->ctx) == VEDA_SUCCESS) {
+            dev->pool.clear();
+        }
     }
 
     g_devices.clear();
@@ -183,9 +206,9 @@ void sliding_dot_product(const double *T, const double *Q, double *QT,
     DeviceContext& dev = current_device();
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr = dev.pool.alloc(n * sizeof(double));
-    VEDAdeviceptr Q_ptr = dev.pool.alloc(m * sizeof(double));
-    VEDAdeviceptr QT_ptr = dev.pool.alloc((n - m + 1) * sizeof(double));
+    PoolPtr T_ptr(dev.pool, n * sizeof(double));
+    PoolPtr Q_ptr(dev.pool, m * sizeof(double));
+    PoolPtr QT_ptr(dev.pool, (n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -201,10 +224,6 @@ void sliding_dot_product(const double *T, const double *Q, double *QT,
     VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-
-    dev.pool.free(T_ptr);
-    dev.pool.free(Q_ptr);
-    dev.pool.free(QT_ptr);
 }
 
 void compute_mean_std(const double *T, double *mu, double *sigma,
@@ -212,9 +231,9 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     DeviceContext& dev = current_device();
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr = dev.pool.alloc(n * sizeof(double));
-    VEDAdeviceptr mu_ptr = dev.pool.alloc((n - m + 1) * sizeof(double));
-    VEDAdeviceptr sigma_ptr = dev.pool.alloc((n - m + 1) * sizeof(double));
+    PoolPtr T_ptr(dev.pool, n * sizeof(double));
+    PoolPtr mu_ptr(dev.pool, (n - m + 1) * sizeof(double));
+    PoolPtr sigma_ptr(dev.pool, (n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -230,18 +249,14 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-
-    dev.pool.free(T_ptr);
-    dev.pool.free(mu_ptr);
-    dev.pool.free(sigma_ptr);
 }
 
 void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool normalize) {
     DeviceContext& dev = current_device();
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T_ptr = dev.pool.alloc(n * sizeof(double));
-    VEDAdeviceptr P_ptr = dev.pool.alloc((n - m + 1) * sizeof(double));
+    PoolPtr T_ptr(dev.pool, n * sizeof(double));
+    PoolPtr P_ptr(dev.pool, (n - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -257,9 +272,6 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool n
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-
-    dev.pool.free(T_ptr);
-    dev.pool.free(P_ptr);
 }
 
 void abjoin(const double *T1, const double *T2, double *P,
@@ -267,9 +279,9 @@ void abjoin(const double *T1, const double *T2, double *P,
     DeviceContext& dev = current_device();
     VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
-    VEDAdeviceptr T1_ptr = dev.pool.alloc(n1 * sizeof(double));
-    VEDAdeviceptr T2_ptr = dev.pool.alloc(n2 * sizeof(double));
-    VEDAdeviceptr P_ptr = dev.pool.alloc((n1 - m + 1) * sizeof(double));
+    PoolPtr T1_ptr(dev.pool, n1 * sizeof(double));
+    PoolPtr T2_ptr(dev.pool, n2 * sizeof(double));
+    PoolPtr P_ptr(dev.pool, (n1 - m + 1) * sizeof(double));
 
     VEDAargs args;
     VEDA_CHECK(vedaArgsCreate(&args));
@@ -288,10 +300,6 @@ void abjoin(const double *T1, const double *T2, double *P,
     VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
 
     VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-
-    dev.pool.free(T1_ptr);
-    dev.pool.free(T2_ptr);
-    dev.pool.free(P_ptr);
 }
 
 void sleep_us(uint64_t microseconds, int stream) {

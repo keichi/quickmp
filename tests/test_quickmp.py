@@ -201,6 +201,17 @@ def test_multithread_selfjoin():
     assert len(results) == num_threads
 
 
+def test_backend_error_raises():
+    # VE: an invalid stream must raise instead of terminating the process.
+    # CPU ignores the stream argument.
+    T = np.random.rand(100)
+    try:
+        quickmp.selfjoin(T, 10, stream=10000)
+    except RuntimeError:
+        pass
+    assert np.allclose(quickmp.selfjoin(T, 10), stumpy.stump(T, 10)[:, 0].astype(np.float64))
+
+
 def test_invalid_window():
     T = np.random.rand(10)
     for f in [lambda: quickmp.selfjoin(T, 11), lambda: quickmp.selfjoin(T, 0),
