@@ -97,8 +97,13 @@ thread_local int g_current_device = -1;                 // Currently selected de
 
 // Get the current device context
 DeviceContext& current_device() {
-    if (g_current_device < 0 || g_current_device >= static_cast<int>(g_devices.size())) {
+    if (g_devices.empty()) {
         throw std::runtime_error("No device selected. Call initialize() first.");
+    }
+    // Threads that never called use_device() default to device 0
+    if (g_current_device < 0 || g_current_device >= static_cast<int>(g_devices.size())) {
+        g_current_device = 0;
+        VEDA_CHECK(vedaCtxSetCurrent(g_devices[0]->ctx));
     }
     return *g_devices[g_current_device];
 }
@@ -140,8 +145,8 @@ void initialize() {
         VEDA_CHECK(vedaModuleGetFunction(&dev.sleep, dev.mod, "sleep_kernel"));
     }
 
-    // Select device 0 by default
-    g_current_device = 0;
+    // Select device 0 by default (vedaCtxCreate leaves the last device current)
+    use_device(0);
 }
 
 void finalize() {
