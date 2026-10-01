@@ -73,14 +73,19 @@ template <bool Norm> inline double finalize(double p, size_t m)
 
 // Updates P with all pairs (i, j) such that ib <= i < ie and j > i + excl
 template <bool Norm>
-void selfjoin_rows(const double *__restrict T, const double *__restrict a,
-                   const double *__restrict b, double *__restrict P, size_t n, size_t m,
-                   size_t excl, size_t ib, size_t ie)
+void selfjoin_rows(const double *_T, const double *_a, const double *_b, double *_P, size_t n,
+                   size_t m, size_t excl, size_t ib, size_t ie)
 {
     const size_t N = n - m + 1;
     if (ib >= ie) {
         return;
     }
+
+    // icpx ignores __restrict on arguments, so use local copies
+    const double *__restrict T = _T;
+    const double *__restrict a = _a;
+    const double *__restrict b = _b;
+    double *__restrict P = _P;
 
     std::vector<double> buf(2 * N);
     double *__restrict QT = buf.data();
@@ -128,15 +133,23 @@ void selfjoin_rows(const double *__restrict T, const double *__restrict a,
 // Updates P (indexed by T1 subsequences) with all pairs (j, i) such that ib <= i < ie, where i
 // indexes T2 subsequences
 template <bool Norm>
-void abjoin_rows(const double *__restrict T1, const double *__restrict T2,
-                 const double *__restrict a1, const double *__restrict b1,
-                 const double *__restrict a2, const double *__restrict b2, double *__restrict P,
-                 size_t n1, size_t m, size_t ib, size_t ie)
+void abjoin_rows(const double *_T1, const double *_T2, const double *_a1, const double *_b1,
+                 const double *_a2, const double *_b2, double *_P, size_t n1, size_t m, size_t ib,
+                 size_t ie)
 {
     const size_t N1 = n1 - m + 1;
     if (ib >= ie) {
         return;
     }
+
+    // icpx ignores __restrict on arguments, so use local copies
+    const double *__restrict T1 = _T1;
+    const double *__restrict T2 = _T2;
+    const double *__restrict a1 = _a1;
+    const double *__restrict b1 = _b1;
+    const double *__restrict a2 = _a2;
+    const double *__restrict b2 = _b2;
+    double *__restrict P = _P;
 
     std::vector<double> buf(2 * N1);
     double *__restrict QT = buf.data();
