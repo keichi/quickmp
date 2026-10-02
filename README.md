@@ -45,3 +45,12 @@ pytest -v
 ```
 
 On VE, run the tests on a host where Vector Engines are available (e.g., in a batch job).
+
+## Building the Documentation
+
+```bash
+pip install -e . -r docs/requirements.txt
+sphinx-build -b html docs docs/_build/html
+```
+
+quickmp must be installed since the API reference is generated from its docstrings.
