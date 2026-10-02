@@ -38,8 +38,6 @@ std::string get_kernel_lib_path() {
 }
 
 // Memory pool for VE device memory (single global pool with mutex)
-// Note: Per-stream pools were tried but performed worse due to VEDA internal
-// contention when multiple threads call vedaMemAlloc simultaneously.
 class MemoryPool {
 public:
     VEDAdeviceptr alloc(size_t size) {
@@ -98,12 +96,10 @@ struct DeviceContext {
     VEDAcontext ctx;
     VEDAmodule mod;
     VEDAfunction selfjoin;
+    VEDAfunction selfjoin_batch;
     VEDAfunction abjoin;
-    VEDAfunction selfjoin_ed;
-    VEDAfunction abjoin_ed;
     VEDAfunction compute_mean_std;
     VEDAfunction sliding_dot_product;
-    VEDAfunction sleep;
     MemoryPool pool;
 };
 
@@ -151,15 +147,16 @@ void initialize() {
         for (int i = 0; i < device_count; ++i) {
             g_devices.emplace_back(std::make_unique<DeviceContext>());
             DeviceContext& dev = *g_devices.back();
-            VEDA_CHECK(vedaCtxCreate(&dev.ctx, VEDA_CONTEXT_MODE_SCALAR, i));
+            // OMP mode runs kernels on all VE cores via OpenMP from a single VEO context. With
+            // SCALAR mode (one context per core), every in-flight call busy-polls on a host thread,
+            // and the few host cores assigned per VE limit the throughput.
+            VEDA_CHECK(vedaCtxCreate(&dev.ctx, VEDA_CONTEXT_MODE_OMP, i));
             VEDA_CHECK(vedaModuleLoad(&dev.mod, kernel_path.c_str()));
             VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin, dev.mod, "selfjoin_kernel"));
+            VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin_batch, dev.mod, "selfjoin_batch_kernel"));
             VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin, dev.mod, "abjoin_kernel"));
-            VEDA_CHECK(vedaModuleGetFunction(&dev.selfjoin_ed, dev.mod, "selfjoin_ed_kernel"));
-            VEDA_CHECK(vedaModuleGetFunction(&dev.abjoin_ed, dev.mod, "abjoin_ed_kernel"));
             VEDA_CHECK(vedaModuleGetFunction(&dev.compute_mean_std, dev.mod, "compute_mean_std_kernel"));
             VEDA_CHECK(vedaModuleGetFunction(&dev.sliding_dot_product, dev.mod, "sliding_dot_product_kernel"));
-            VEDA_CHECK(vedaModuleGetFunction(&dev.sleep, dev.mod, "sleep_kernel"));
         }
     } catch (...) {
         g_devices.clear();
@@ -201,10 +198,8 @@ int get_current_device() {
     return g_current_device;
 }
 
-void sliding_dot_product(const double *T, const double *Q, double *QT,
-                         size_t n, size_t m, int stream) {
+void sliding_dot_product(const double *T, const double *Q, double *QT, size_t n, size_t m) {
     DeviceContext& dev = current_device();
-    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     PoolPtr T_ptr(dev.pool, n * sizeof(double));
     PoolPtr Q_ptr(dev.pool, m * sizeof(double));
@@ -218,18 +213,16 @@ void sliding_dot_product(const double *T, const double *Q, double *QT,
     VEDA_CHECK(vedaArgsSetU64(args, 3, n));
     VEDA_CHECK(vedaArgsSetU64(args, 4, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemcpyHtoDAsync(Q_ptr, Q, m * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(dev.sliding_dot_product, veda_stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), 0));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(Q_ptr, Q, m * sizeof(double), 0));
+    VEDA_CHECK(vedaLaunchKernelEx(dev.sliding_dot_product, 0, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(QT, QT_ptr, (n - m + 1) * sizeof(double), 0));
 
-    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+    VEDA_CHECK(vedaStreamSynchronize(0));
 }
 
-void compute_mean_std(const double *T, double *mu, double *sigma,
-                      size_t n, size_t m, int stream) {
+void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size_t m) {
     DeviceContext& dev = current_device();
-    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     PoolPtr T_ptr(dev.pool, n * sizeof(double));
     PoolPtr mu_ptr(dev.pool, (n - m + 1) * sizeof(double));
@@ -243,17 +236,16 @@ void compute_mean_std(const double *T, double *mu, double *sigma,
     VEDA_CHECK(vedaArgsSetU64(args, 3, n));
     VEDA_CHECK(vedaArgsSetU64(args, 4, m));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(dev.compute_mean_std, veda_stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), 0));
+    VEDA_CHECK(vedaLaunchKernelEx(dev.compute_mean_std, 0, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(mu, mu_ptr, (n - m + 1) * sizeof(double), 0));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(sigma, sigma_ptr, (n - m + 1) * sizeof(double), 0));
 
-    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+    VEDA_CHECK(vedaStreamSynchronize(0));
 }
 
-void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool normalize) {
+void selfjoin(const double *T, double *P, size_t n, size_t m, bool normalize) {
     DeviceContext& dev = current_device();
-    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     PoolPtr T_ptr(dev.pool, n * sizeof(double));
     PoolPtr P_ptr(dev.pool, (n - m + 1) * sizeof(double));
@@ -264,20 +256,44 @@ void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool n
     VEDA_CHECK(vedaArgsSetVPtr(args, 1, P_ptr));
     VEDA_CHECK(vedaArgsSetU64(args, 2, n));
     VEDA_CHECK(vedaArgsSetU64(args, 3, m));
+    VEDA_CHECK(vedaArgsSetI32(args, 4, normalize));
 
-    VEDAfunction kernel = normalize ? dev.selfjoin : dev.selfjoin_ed;
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), 0));
+    VEDA_CHECK(vedaLaunchKernelEx(dev.selfjoin, 0, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), 0));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, n * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(kernel, veda_stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n - m + 1) * sizeof(double), veda_stream));
+    VEDA_CHECK(vedaStreamSynchronize(0));
+}
 
-    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
+void selfjoin_batch(const double *T, double *P, size_t count, size_t n, size_t m,
+                    bool normalize) {
+    DeviceContext& dev = current_device();
+    if (count == 0) {
+        return;
+    }
+
+    PoolPtr T_ptr(dev.pool, count * n * sizeof(double));
+    PoolPtr P_ptr(dev.pool, count * (n - m + 1) * sizeof(double));
+
+    VEDAargs args;
+    VEDA_CHECK(vedaArgsCreate(&args));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 0, T_ptr));
+    VEDA_CHECK(vedaArgsSetVPtr(args, 1, P_ptr));
+    VEDA_CHECK(vedaArgsSetU64(args, 2, count));
+    VEDA_CHECK(vedaArgsSetU64(args, 3, n));
+    VEDA_CHECK(vedaArgsSetU64(args, 4, m));
+    VEDA_CHECK(vedaArgsSetI32(args, 5, normalize));
+
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T_ptr, T, count * n * sizeof(double), 0));
+    VEDA_CHECK(vedaLaunchKernelEx(dev.selfjoin_batch, 0, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, count * (n - m + 1) * sizeof(double), 0));
+
+    VEDA_CHECK(vedaStreamSynchronize(0));
 }
 
 void abjoin(const double *T1, const double *T2, double *P,
-            size_t n1, size_t n2, size_t m, int stream, bool normalize) {
+            size_t n1, size_t n2, size_t m, bool normalize) {
     DeviceContext& dev = current_device();
-    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
 
     PoolPtr T1_ptr(dev.pool, n1 * sizeof(double));
     PoolPtr T2_ptr(dev.pool, n2 * sizeof(double));
@@ -291,34 +307,14 @@ void abjoin(const double *T1, const double *T2, double *P,
     VEDA_CHECK(vedaArgsSetU64(args, 3, n1));
     VEDA_CHECK(vedaArgsSetU64(args, 4, n2));
     VEDA_CHECK(vedaArgsSetU64(args, 5, m));
+    VEDA_CHECK(vedaArgsSetI32(args, 6, normalize));
 
-    VEDAfunction kernel = normalize ? dev.abjoin : dev.abjoin_ed;
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T1_ptr, T1, n1 * sizeof(double), 0));
+    VEDA_CHECK(vedaMemcpyHtoDAsync(T2_ptr, T2, n2 * sizeof(double), 0));
+    VEDA_CHECK(vedaLaunchKernelEx(dev.abjoin, 0, args, 1, nullptr));
+    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), 0));
 
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T1_ptr, T1, n1 * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaMemcpyHtoDAsync(T2_ptr, T2, n2 * sizeof(double), veda_stream));
-    VEDA_CHECK(vedaLaunchKernelEx(kernel, veda_stream, args, 1, nullptr));
-    VEDA_CHECK(vedaMemcpyDtoHAsync(P, P_ptr, (n1 - m + 1) * sizeof(double), veda_stream));
-
-    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-}
-
-void sleep_us(uint64_t microseconds, int stream) {
-    DeviceContext& dev = current_device();
-    VEDAstream veda_stream = static_cast<VEDAstream>(stream);
-
-    VEDAargs args;
-    VEDA_CHECK(vedaArgsCreate(&args));
-    VEDA_CHECK(vedaArgsSetU64(args, 0, microseconds));
-
-    VEDA_CHECK(vedaLaunchKernelEx(dev.sleep, veda_stream, args, 1, nullptr));
-    VEDA_CHECK(vedaStreamSynchronize(veda_stream));
-}
-
-int get_stream_count() {
-    DeviceContext& dev = current_device();
-    int streamCnt = 0;
-    VEDAresult err = vedaCtxStreamCnt(&streamCnt);
-    return (err == VEDA_SUCCESS) ? streamCnt : 0;
+    VEDA_CHECK(vedaStreamSynchronize(0));
 }
 
 } // namespace quickmp

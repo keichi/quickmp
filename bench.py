@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Benchmark for quickmp matrix profile computation with multiple devices and streams."""
+"""Benchmark for quickmp batched matrix profile computation with multiple devices."""
 
 import argparse
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import quickmp
@@ -32,14 +31,14 @@ def main():
         help="Number of devices to use (default: all available)"
     )
     parser.add_argument(
-        "-s", "--streams", type=int, default=None,
-        help="Number of streams per device (default: all available)"
+        "-b", "--batch", type=int, default=64,
+        help="Number of time series per selfjoin_batch call (default: 64)"
     )
     args = parser.parse_args()
 
     print(f"Generating {args.count} time series of length {args.length}...")
     np.random.seed(42)
-    timeseries_list = [np.random.rand(args.length) for _ in range(args.count)]
+    T = np.random.rand(args.count, args.length)
 
     quickmp.initialize()
 
@@ -49,54 +48,33 @@ def main():
         sys.exit(f"Error: Requested {args.devices} devices, but only {max_devices} available")
     num_devices = args.devices if args.devices else max_devices
 
-    num_streams = None
+    # Warm up all devices
     for d in range(num_devices):
         quickmp.use_device(d)
-        max_streams = quickmp.get_stream_count()
-        if args.streams is not None and args.streams > max_streams:
-            quickmp.finalize()
-            sys.exit(f"Error: Device {d} has only {max_streams} streams, but {args.streams} requested")
-        if num_streams is None:
-            num_streams = args.streams if args.streams else max_streams
+        quickmp.selfjoin_batch(T[:args.batch], args.window)
 
-    total_workers = num_devices * num_streams
+    # Each device processes a contiguous share of the time series in batches
+    shares = np.array_split(np.arange(args.count), num_devices)
+    barrier = threading.Barrier(num_devices + 1)
 
-    # Warm up all devices and streams
-    for d in range(num_devices):
-        quickmp.use_device(d)
-        for s in range(num_streams):
-            quickmp.selfjoin(timeseries_list[0], args.window, stream=s)
-
-    # Create barrier for synchronization
-    barrier = threading.Barrier(total_workers + 1)
-    first_task_done = [False] * total_workers  # Track first task per worker
-
-    def compute_mp(task):
-        idx, T = task
-        device_id = idx % num_devices
-        stream_id = (idx // num_devices) % num_streams
-        worker_id = device_id + stream_id * num_devices
+    def worker(device_id, indices):
         quickmp.use_device(device_id)
-
-        # First task of each worker waits on barrier
-        if not first_task_done[worker_id]:
-            first_task_done[worker_id] = True
-            barrier.wait()
-
-        return quickmp.selfjoin(T, args.window, stream=stream_id)
-
-    print(f"Computing matrix profiles with {num_devices} device(s) x {num_streams} stream(s) = {total_workers} workers...")
-
-    with ThreadPoolExecutor(max_workers=total_workers) as executor:
-        # Submit all tasks
-        futures = [executor.submit(compute_mp, (i, T)) for i, T in enumerate(timeseries_list)]
-
-        # Wait for all workers to be ready, then start timing
         barrier.wait()
-        start = time.perf_counter()
+        for start in range(0, len(indices), args.batch):
+            idx = indices[start:start + args.batch]
+            quickmp.selfjoin_batch(T[idx[0]:idx[-1] + 1], args.window)
 
-        # Collect results
-        results = [f.result() for f in futures]
+    print(f"Computing matrix profiles with {num_devices} device(s), batch size {args.batch}...")
+
+    threads = [threading.Thread(target=worker, args=(d, shares[d])) for d in range(num_devices)]
+    for t in threads:
+        t.start()
+
+    barrier.wait()
+    start = time.perf_counter()
+
+    for t in threads:
+        t.join()
 
     elapsed = time.perf_counter() - start
 

@@ -7,7 +7,7 @@ support for both CPU and NEC Vector Engine (VE) backends.
 
 quickmp is optimized for computing matrix profiles of many short-to-medium
 length time series. On VE, it achieves high-throughput computation by
-leveraging multiple devices and streams.
+leveraging multiple devices and all cores of each device.
 
 .. toctree::
    :maxdepth: 2
@@ -16,6 +16,12 @@ leveraging multiple devices and streams.
    installation
    quickstart
    api
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Development:
+
+   vectorization
 
 Indices and tables
 ==================

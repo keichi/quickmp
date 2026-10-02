@@ -1,9 +1,8 @@
 #include "quickmp.hpp"
 #include "cpu/internal.hpp"
+#include "stomp.hpp"
 
 #include <stdexcept>
-#include <thread>
-#include <unistd.h>
 
 namespace {
 
@@ -44,45 +43,26 @@ int get_current_device() {
     return 0;
 }
 
-int get_stream_count() {
-    unsigned int cores = std::thread::hardware_concurrency();
-    return cores > 0 ? static_cast<int>(cores) : 1;
-}
-
-void sliding_dot_product(const double *T, const double *Q, double *QT,
-                         size_t n, size_t m, int stream) {
-    (void)stream;
+void sliding_dot_product(const double *T, const double *Q, double *QT, size_t n, size_t m) {
     sliding_dot_product_fft(T, Q, QT, n, m);
 }
 
-void compute_mean_std(const double *T, double *mu, double *sigma,
-                      size_t n, size_t m, int stream) {
-    (void)stream;
+void compute_mean_std(const double *T, double *mu, double *sigma, size_t n, size_t m) {
     ::compute_mean_std(T, mu, sigma, n, m);
 }
 
-void selfjoin(const double *T, double *P, size_t n, size_t m, int stream, bool normalize) {
-    (void)stream;
-    if (normalize) {
-        ::selfjoin(T, P, n, m);
-    } else {
-        ::selfjoin_ed(T, P, n, m);
-    }
+void selfjoin(const double *T, double *P, size_t n, size_t m, bool normalize) {
+    stomp::selfjoin(T, P, n, m, normalize);
 }
 
-void abjoin(const double *T1, const double *T2, double *P,
-            size_t n1, size_t n2, size_t m, int stream, bool normalize) {
-    (void)stream;
-    if (normalize) {
-        ::abjoin(T1, T2, P, n1, n2, m);
-    } else {
-        ::abjoin_ed(T1, T2, P, n1, n2, m);
-    }
+void selfjoin_batch(const double *T, double *P, size_t count, size_t n, size_t m,
+                    bool normalize) {
+    stomp::selfjoin_batch(T, P, count, n, m, normalize);
 }
 
-void sleep_us(uint64_t microseconds, int stream) {
-    (void)stream;
-    usleep(microseconds);
+void abjoin(const double *T1, const double *T2, double *P, size_t n1, size_t n2, size_t m,
+            bool normalize) {
+    stomp::abjoin(T1, T2, P, n1, n2, m, normalize);
 }
 
 } // namespace quickmp

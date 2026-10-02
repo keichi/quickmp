@@ -72,7 +72,7 @@ select which device to use:
    num_devices = quickmp.get_device_count()
    print(f"Available devices: {num_devices}")
 
-   # Switch to a specific device
+   # Switch to a specific device (for the calling thread)
    quickmp.use_device(0)
 
    # Check current device
@@ -81,32 +81,58 @@ select which device to use:
 
    quickmp.finalize()
 
-Parallel Execution with Streams
--------------------------------
+The selected device is per thread. Threads that have not called
+``use_device`` use device 0.
 
-quickmp supports stream-based parallelism for concurrent computations:
+Batch Computation
+-----------------
+
+``selfjoin`` and ``abjoin`` use all cores of the device for a single time
+series. To compute the matrix profiles of many time series of the same length,
+``selfjoin_batch`` is faster since it processes the time series in parallel:
 
 .. code-block:: python
 
-   from concurrent.futures import ThreadPoolExecutor
    import numpy as np
    import quickmp
 
    quickmp.initialize()
 
-   # Get available streams
-   num_streams = quickmp.get_stream_count()
-
-   def compute_on_stream(stream_id, data):
-       return quickmp.selfjoin(data, m=100, stream=stream_id)
-
-   # Run computations in parallel using different streams
-   with ThreadPoolExecutor(max_workers=num_streams) as executor:
-       datasets = [np.random.rand(1000) for _ in range(num_streams)]
-       futures = [
-           executor.submit(compute_on_stream, i, data)
-           for i, data in enumerate(datasets)
-       ]
-       results = [f.result() for f in futures]
+   # Each row is a time series
+   T = np.random.rand(1000, 7200)
+   P = quickmp.selfjoin_batch(T, m=10)  # shape: (1000, 7191)
 
    quickmp.finalize()
+
+To use multiple devices, split the time series among one thread per device:
+
+.. code-block:: python
+
+   import threading
+
+   # T: 2D array of time series, after quickmp.initialize()
+   def worker(device, T):
+       quickmp.use_device(device)
+       results[device] = quickmp.selfjoin_batch(T, m=10)
+
+   num_devices = quickmp.get_device_count()
+   chunks = np.array_split(T, num_devices)
+   results = [None] * num_devices
+   threads = [threading.Thread(target=worker, args=(d, chunks[d]))
+              for d in range(num_devices)]
+   for t in threads:
+       t.start()
+   for t in threads:
+       t.join()
+   P = np.concatenate(results)
+
+Since each call already uses all cores of the device, calling functions
+concurrently from multiple threads on the same device does not make them
+faster.
+
+Number of Threads
+-----------------
+
+quickmp uses OpenMP to parallelize computations over the cores of a device.
+The number of threads defaults to the number of cores and can be changed with
+``OMP_NUM_THREADS`` on CPU and ``VE_OMP_NUM_THREADS`` on Vector Engine.
