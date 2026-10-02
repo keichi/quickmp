@@ -83,6 +83,8 @@ NB_MODULE(_quickmp, m) {
         R"doc(
         Switch to the specified device.
 
+        The device is selected per thread. Threads that have not called use_device() use device 0.
+
         Args:
           device: Device ID to use
     )doc");
@@ -96,7 +98,7 @@ NB_MODULE(_quickmp, m) {
             return quickmp::get_current_device();
         },
         R"doc(
-        Get the currently selected device ID.
+        Get the device ID selected for the calling thread.
 
         Returns:
           Currently selected device ID
@@ -185,6 +187,9 @@ NB_MODULE(_quickmp, m) {
         R"doc(
         Compute the matrix profile for time series T.
 
+        The computation is parallelized over all cores of the device. To compute the matrix
+        profiles of many time series, selfjoin_batch() is faster.
+
         Args:
           T: Time series
           m: Window size
@@ -250,6 +255,8 @@ NB_MODULE(_quickmp, m) {
         "T1"_a, "T2"_a, "m"_a, "normalize"_a = true,
         R"doc(
         Compute the matrix profile between time series T1 and T2.
+
+        The computation is parallelized over all cores of the device.
 
         Args:
           T1: Time series

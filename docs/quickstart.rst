@@ -72,7 +72,7 @@ select which device to use:
    num_devices = quickmp.get_device_count()
    print(f"Available devices: {num_devices}")
 
-   # Switch to a specific device
+   # Switch to a specific device (for the calling thread)
    quickmp.use_device(0)
 
    # Check current device
@@ -80,6 +80,9 @@ select which device to use:
    print(f"Current device: {current}")
 
    quickmp.finalize()
+
+The selected device is per thread. Threads that have not called
+``use_device`` use device 0.
 
 Batch Computation
 -----------------
@@ -101,5 +104,35 @@ series. To compute the matrix profiles of many time series of the same length,
 
    quickmp.finalize()
 
-To use multiple devices, call ``use_device`` in one thread per device and
-split the time series among the threads.
+To use multiple devices, split the time series among one thread per device:
+
+.. code-block:: python
+
+   import threading
+
+   # T: 2D array of time series, after quickmp.initialize()
+   def worker(device, T):
+       quickmp.use_device(device)
+       results[device] = quickmp.selfjoin_batch(T, m=10)
+
+   num_devices = quickmp.get_device_count()
+   chunks = np.array_split(T, num_devices)
+   results = [None] * num_devices
+   threads = [threading.Thread(target=worker, args=(d, chunks[d]))
+              for d in range(num_devices)]
+   for t in threads:
+       t.start()
+   for t in threads:
+       t.join()
+   P = np.concatenate(results)
+
+Since each call already uses all cores of the device, calling functions
+concurrently from multiple threads on the same device does not make them
+faster.
+
+Number of Threads
+-----------------
+
+quickmp uses OpenMP to parallelize computations over the cores of a device.
+The number of threads defaults to the number of cores and can be changed with
+``OMP_NUM_THREADS`` on CPU and ``VE_OMP_NUM_THREADS`` on Vector Engine.

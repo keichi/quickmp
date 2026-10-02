@@ -18,7 +18,8 @@ The easiest way to install quickmp is via pip:
 
 .. note::
 
-   Pre-built wheels from PyPI include the CPU backend only.
+   Pre-built wheels from PyPI include the CPU backend only and are available
+   for Linux (x86-64) and macOS 14 or later (Apple silicon).
    To use the NEC Vector Engine backend, you must install from source.
 
 Install from Source

@@ -13,10 +13,11 @@ void finalize();
 // Get number of available devices (VE: number of VE devices, CPU: always 1)
 int get_device_count();
 
-// Switch to the specified device
+// Switch to the specified device for the calling thread (threads that have not called
+// use_device() use device 0)
 void use_device(int device);
 
-// Get the currently selected device ID
+// Get the device ID selected for the calling thread
 int get_current_device();
 
 // Compute sliding dot product between T and Q
