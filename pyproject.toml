@@ -50,6 +50,7 @@ write_to = "python/quickmp/_version.py"
 
 [tool.cibuildwheel]
 build = ["cp*-macosx_arm64", "cp*-manylinux_x86_64"]
+skip = "cp3??t-*"
 test-command = "pytest {project}/tests"
 test-requires = ["pytest", "stumpy"]
 test-skip = "cp314*"
