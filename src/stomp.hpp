@@ -110,7 +110,69 @@ void selfjoin_rows(const double *_T, const double *_a, const double *_b, double 
     }
     P[ib] = best;
 
-    for (size_t i = ib + 1; i < ie; i++) {
+    size_t i = ib + 1;
+
+#ifdef __ve__
+    // Process two rows at once to reduce vector loads and stores. Row i + 1 at column j is
+    // computed from row i - 1 at column j - 2 by applying the sliding-window update twice, in the
+    // same order as the single-row loop below. NCC's outerloop_unroll directive does not apply to
+    // this loop, so it is unrolled by hand. Two rows were faster than four or eight on VE30.
+    constexpr size_t VL = 256;
+    for (; i + 2 <= ie; i += 2) {
+        const double t0 = T[i - 1], t1 = T[i];
+        const double u0 = T[i + m - 1], u1 = T[i + m];
+        const double a0 = a[i], a1 = a[i + 1];
+        const double b0 = b[i], b1 = b[i + 1];
+
+        // Column i + excl + 1 is outside the exclusion zone only for row i
+        const size_t j0 = i + excl + 2;
+        double best0 = dist<Norm>(QT[j0 - 2] - T[j0 - 2] * t0 + T[j0 + m - 2] * u0, a0, b0,
+                                  a[j0 - 1], b[j0 - 1], m);
+        P[j0 - 1] = better<Norm>(P[j0 - 1], best0);
+        double best1 = worst<Norm>();
+
+        // Multiple reductions in one loop are spilled to memory by NCC, so reduce into vector
+        // registers by strip mining instead
+        double bv0[VL], bv1[VL];
+#pragma _NEC vreg(bv0)
+#pragma _NEC vreg(bv1)
+        for (size_t k = 0; k < VL; k++) {
+            bv0[k] = bv1[k] = worst<Norm>();
+        }
+
+        for (size_t jb = j0; jb < N; jb += VL) {
+            const size_t len = N - jb < VL ? N - jb : VL;
+            for (size_t k = 0; k < len; k++) {
+                const size_t j = jb + k;
+                const double x1 = T[j - 1], x2 = T[j - 2];
+                const double y1 = T[j + m - 1], y2 = T[j + m - 2];
+
+                const double q0 = QT[j - 1] - x1 * t0 + y1 * u0;
+                const double q1 = QT[j - 2] - x2 * t0 + y2 * u0 - x1 * t1 + y1 * u1;
+                QT2[j] = q1;
+
+                const double d0 = dist<Norm>(q0, a0, b0, a[j], b[j], m);
+                const double d1 = dist<Norm>(q1, a1, b1, a[j], b[j], m);
+
+                P[j] = better<Norm>(P[j], better<Norm>(d0, d1));
+                bv0[k] = better<Norm>(bv0[k], d0);
+                bv1[k] = better<Norm>(bv1[k], d1);
+            }
+        }
+
+        for (size_t k = 0; k < VL; k++) {
+            best0 = better<Norm>(best0, bv0[k]);
+            best1 = better<Norm>(best1, bv1[k]);
+        }
+
+        P[i] = better<Norm>(P[i], best0);
+        P[i + 1] = better<Norm>(P[i + 1], best1);
+
+        std::swap(QT, QT2);
+    }
+#endif
+
+    for (; i < ie; i++) {
         best = P[i];
 
         for (size_t j = i + excl + 1; j < N; j++) {

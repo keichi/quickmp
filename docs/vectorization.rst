@@ -12,7 +12,10 @@ Loops to Check
 The innermost loops over ``j`` in the following functions account for almost
 all of the execution time and must be vectorized:
 
-- ``selfjoin_rows``: the loop that updates ``QT2[j]`` from ``QT[j - 1]``
+- ``selfjoin_rows``: the loop that updates ``QT2[j]`` from ``QT[j - 1]``, and on
+  VE the loop that processes two rows at once (``#ifdef __ve__``). Its row
+  maxima/minima ``bv0`` and ``bv1`` must be assigned to vector registers
+  ("Vector register is assigned").
 - ``abjoin_rows``: the loop that updates ``QT2[j]`` from ``QT[j - 1]``
 
 The other loops (statistics, the first row of each chunk, merging per-thread
