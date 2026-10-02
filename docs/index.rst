@@ -17,6 +17,12 @@ leveraging multiple devices and all cores of each device.
    quickstart
    api
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Development:
+
+   vectorization
+
 Indices and tables
 ==================
 
